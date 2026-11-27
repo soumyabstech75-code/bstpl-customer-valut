@@ -558,31 +558,46 @@
       text-transform: uppercase;
       letter-spacing: 0.04em;
     }
-    select, input[type="text"], input[type="password"], input[type="search"], textarea {
-      height: 38px;
-      padding: 0 12px;
+    select,
+    input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]):not([type="range"]):not([type="color"]):not([type="button"]):not([type="submit"]):not([type="reset"]),
+    textarea {
+      height: 40px;
+      padding: 0 13px;
       border-radius: 10px;
       border: 1.5px solid var(--line);
       background: var(--card);
       color: var(--text);
       font-family: inherit;
       font-weight: 600;
-      font-size: 13px;
+      font-size: 13.5px;
+      box-sizing: border-box;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
       outline: none;
-      transition: border-color 0.15s;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+    }
+    input::placeholder, textarea::placeholder {
+      color: var(--muted);
+      opacity: 0.72;
+      font-weight: 500;
     }
     textarea {
       height: auto;
-      padding: 10px 12px;
+      padding: 10px 13px;
     }
     select:focus, input:focus, textarea:focus {
       border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
     }
     .form-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
       gap: 14px;
       margin-bottom: 16px;
+    }
+    .form-grid input,
+    .form-grid select,
+    .form-grid textarea {
+      width: 100%;
     }
 
     /* Buttons */
@@ -1896,9 +1911,15 @@
           <div class="card" style="padding:18px 20px;border:1px solid var(--line);margin-bottom:20px;background:var(--card-subtle);border-radius:14px">
             <h4 style="margin:0 0 12px;font-size:14.5px;font-weight:800;color:var(--text)">➕ Add New Employee Account</h4>
             <div class="form-grid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px">
-              <div><label for="un">Full Name *</label><input id="un" placeholder="Jane Doe" required /></div>
-              <div><label for="ui">Login ID *</label><input id="ui" placeholder="e.g. 0002, 0005, 1024" autocapitalize="none" autocomplete="off" required /></div>
-              <div><label for="up">Initial Password * (8+ chars)</label><input id="up" type="password" autocomplete="new-password" placeholder="Min 8 characters" required /></div>
+              <div><label for="un">Full Name *</label><input type="text" id="un" placeholder="Enter employee full name" autocomplete="name" required /></div>
+              <div><label for="ui">Login ID *</label><input type="text" id="ui" placeholder="Enter employee ID (e.g., 0011)" autocapitalize="none" autocomplete="off" required /></div>
+              <div>
+                <label for="up">Initial Password * (8+ chars)</label>
+                <div style="position:relative;display:flex;align-items:center">
+                  <input id="up" type="password" autocomplete="new-password" minlength="8" placeholder="Minimum 8 characters" required style="padding-right:38px" />
+                  <button type="button" onclick="toggleCreateUserPw('up', this)" title="Show / Hide Password" aria-label="Show or hide password" style="position:absolute;right:6px;background:none;border:none;cursor:pointer;font-size:14px;padding:4px 6px;color:var(--muted)">👁️</button>
+                </div>
+              </div>
               <div>
                 <label for="ur2">Assigned Role</label>
                 <select id="ur2" title="Select assigned employee role tier">
@@ -2253,17 +2274,28 @@
         style="padding:16px 18px;border:1px solid var(--line);margin-bottom:16px;background:var(--card-subtle)">
         <h4 style="margin:0 0 10px;font-size:14px">Add New Employee Account</h4>
         <div class="form-grid">
-          <div><label for="un-modal">Full Name *</label><input id="un-modal" placeholder="Jane Doe" required /></div>
-          <div><label for="ui-modal">Login ID *</label><input id="ui-modal" placeholder="e.g. 0002, 0005, 1024"
+          <div><label for="un-modal">Full Name *</label><input type="text" id="un-modal" placeholder="Enter employee full name" autocomplete="name" required /></div>
+          <div><label for="ui-modal">Login ID *</label><input type="text" id="ui-modal" placeholder="Enter employee ID (e.g., 0011)"
               autocapitalize="none" autocomplete="off" required /></div>
-          <div><label for="up-modal">Initial Password * (8+ chars)</label><input id="up-modal" type="password"
-              autocomplete="new-password" required /></div>
+          <div>
+            <label for="up-modal">Initial Password * (8+ chars)</label>
+            <div style="position:relative;display:flex;align-items:center">
+              <input id="up-modal" type="password" autocomplete="new-password" minlength="8" placeholder="Minimum 8 characters" required style="padding-right:38px" />
+              <button type="button" onclick="toggleCreateUserPw('up-modal', this)" title="Show / Hide Password" aria-label="Show or hide password" style="position:absolute;right:6px;background:none;border:none;cursor:pointer;font-size:14px;padding:4px 6px;color:var(--muted)">👁️</button>
+            </div>
+          </div>
           <div><label for="ur2-modal">Assigned Role</label>
             <select id="ur2-modal" title="Select assigned employee role tier">
               <option value="master_admin" selected>⭐ Master Admin (Default)</option>
               <option value="admin_user">🛡️ Regular Admin</option>
               <option value="regular_user">👤 Regular User</option>
               <option value="super_admin" id="optSuperAdminRole-modal">👑 Super Admin</option>
+            </select>
+          </div>
+          <div>
+            <label for="uScopedCust-modal">Customer Portal Scope (Optional)</label>
+            <select id="uScopedCust-modal" title="Restrict account access strictly to a single customer portfolio">
+              <option value="" selected>🌐 Global (All Customers)</option>
             </select>
           </div>
         </div>
@@ -2275,7 +2307,7 @@
           • <code>0005, 0006, 0008–0010</code> = <b>Admin Users:</b> Full entry & data management; can delete admin users & regular users.<br />
           • <code>After 0010</code> = <b>Regular Users:</b> Upload data, fetch/view entries, and edit entries.
         </p>
-        <button class="b p" id="uadd-modal">Create Employee User</button>
+        <button type="button" class="b p" id="uadd-modal">Create Employee User</button>
       </div>
       <div id="usersTableWrap-modal">
         <div class="empty">Loading employees…</div>
@@ -2620,6 +2652,31 @@
       <!-- Live Connection Test Result Box -->
       <div id="dlgConnTestResultBox" style="display:none"></div>
 
+      <!-- Section: Synced Sensorise Telematics Values Table -->
+      <div style="padding:18px 20px;background:var(--card);border:1px solid var(--line);border-radius:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+          <div>
+            <h4 style="margin:0;font-size:15px;font-weight:800;color:var(--text);display:flex;align-items:center;gap:6px">
+              <span>📡</span> <span>Sensorise Telematics Values (sensorise_sims_basic)</span>
+            </h4>
+            <p id="dlgSensoriseValuesSubtitle" style="margin:2px 0 0;font-size:12px;color:var(--text-dim)">
+              Showing synced Sensorise ICCID, MSISDN 1, MSISDN 2, Activation Date &amp; Expiry Date records.
+            </p>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <input id="dlgSensoriseSearchInput" type="search" placeholder="Search ICCID / MSISDN…" oninput="filterSensoriseBasicRows(this.value)" style="height:32px;padding:0 10px;border-radius:8px;border:1px solid var(--line);background:var(--card-subtle);color:var(--text);font-size:12px;min-width:190px" />
+            <button type="button" class="b p" id="btnDlgFetchBasicNow" onclick="fetchSensoriseValuesNow()" style="height:32px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:6px">
+              <span id="dlgFetchBasicSpinner" style="display:none">⏳</span>
+              <span>🔄 Fetch &amp; Sync Values</span>
+            </button>
+          </div>
+        </div>
+        <div id="dlgSensoriseQuotaBanner" style="display:none;margin-bottom:10px;padding:10px 14px;border-radius:10px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.35);color:#b45309;font-size:12px;font-weight:600"></div>
+        <div id="dlgSensoriseValuesTableWrap" style="max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:10px;background:var(--card-subtle)">
+          <div style="padding:18px;text-align:center;color:var(--muted);font-size:12.5px">Loading Sensorise telematics values…</div>
+        </div>
+      </div>
+
       <!-- Section: Token Expiration & Token Generation Hub -->
       <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(340px, 1fr));gap:16px">
 
@@ -2859,7 +2916,10 @@
   <script>
 
     // --- Window Dialog & Session Helpers ---
-    window.openManageUsersModal = function() { openModal("dlgManageUsers"); };
+    window.openManageUsersModal = function() {
+      openModal("dlgManageUsers");
+      if (typeof loadUsersContainer === "function") loadUsersContainer();
+    };
     window.closeModal = function(id) {
       const dlg = document.getElementById(id);
       if (dlg) {
@@ -2937,6 +2997,13 @@
     }
 
     const $ = id => document.getElementById(id) || _safeElem(id);
+    window.toggleCreateUserPw = function(inputId, btn) {
+      const el = document.getElementById(inputId);
+      if (!el) return;
+      const isPw = el.type === 'password';
+      el.type = isPw ? 'text' : 'password';
+      if (btn) btn.textContent = isPw ? '🙈' : '👁️';
+    };
     const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
     const toast = m => {
@@ -4120,6 +4187,7 @@ async function loadAuditLogContainer() {
           cv.toast(`Display name for user ${res.user_id} updated to "${res.name}"`, 'ok');
           closeAdminEditUserNameModal();
           loadUsersContainer();
+          if (typeof loadLoginInventory === 'function') loadLoginInventory();
         } catch (err) {
           if (errEl) { errEl.textContent = err.message || 'Failed to update user name.'; errEl.hidden = false; }
         } finally {
@@ -4175,6 +4243,7 @@ async function loadAuditLogContainer() {
           cv.toast(`Password successfully reset for employee ${res.user_id}`, 'ok');
           closeAdminResetPasswordModal();
           loadUsersContainer();
+          if (typeof loadLoginInventory === 'function') loadLoginInventory();
         } catch (err) {
           if (errEl) { errEl.textContent = err.message || 'Failed to reset password.'; errEl.hidden = false; }
         } finally {
@@ -4423,13 +4492,11 @@ This employee will immediately lose all access credentials to CustomerVault.`,
           `;
 
           // Update both the page card and dialog wraps if present
-          const wrap1 = $('usersTableWrap');
-          if (wrap1) wrap1.innerHTML = tableMarkup;
-          const wrap2 = document.querySelectorAll('#usersTableWrap')[1];
-          if (wrap2) wrap2.innerHTML = tableMarkup;
-
-          // Attach event delegation for action buttons
-          document.querySelectorAll('#usersTableWrap').forEach(wrap => {
+          const tableWraps = [
+            ...document.querySelectorAll('#usersTableWrap, #usersTableWrap-modal')
+          ];
+          tableWraps.forEach(wrap => {
+            wrap.innerHTML = tableMarkup;
             wrap.onclick = async (ev) => {
               const btn = ev.target.closest('[data-ueditname],[data-ures],[data-uperm],[data-udel]');
               if (!btn) return;
@@ -4449,59 +4516,18 @@ This employee will immediately lose all access credentials to CustomerVault.`,
             };
           });
 
-          // Super Admin role option is available only to Super Admins
-          if ($('optSuperAdminRole')) {
-            $('optSuperAdminRole').hidden = !isSuperAdmin;
-            $('optSuperAdminRole').disabled = !isSuperAdmin;
-          }
+          const roleBadgeLabel = sel => {
+            if (sel === 'super_admin') return '👑 Super Admin — Full unrestricted system access, privileges assignment, and deletion privileges.';
+            if (sel === 'master_admin') return '⭐ Master Admin — Full Access & Login Inventory; invalid entries direct delete; protected from valid entry delete.';
+            if (sel === 'admin_user') return '🛡️ Regular Admin — Entry & Excel bulk deletion privileges; Login Inventory strictly restricted.';
+            return '👤 Regular User — Upload data, fetch/view entries, and edit entries.';
+          };
 
-          if ($('ur2')) $('ur2').value = 'master_admin';
-          if ($('roleTierBadge')) $('roleTierBadge').textContent = '⭐ Master Admin (Default) — Full Access; protected from valid inventory deletion; authorized for invalid entries direct delete.';
-
-          if ($('ur2')) {
-            $('ur2').onchange = () => {
-              const sel = $('ur2').value;
-              if (sel === 'super_admin') {
-                if ($('roleTierBadge')) $('roleTierBadge').textContent = '👑 Super Admin — Full unrestricted system access, privileges assignment, and deletion privileges.';
-              } else if (sel === 'master_admin') {
-                if ($('roleTierBadge')) $('roleTierBadge').textContent = '⭐ Master Admin — Full Access & Login Inventory; invalid entries direct delete; protected from valid entry delete.';
-              } else if (sel === 'admin_user') {
-                if ($('roleTierBadge')) $('roleTierBadge').textContent = '🛡️ Regular Admin — Entry & Excel bulk deletion privileges; Login Inventory strictly restricted.';
-              } else {
-                if ($('roleTierBadge')) $('roleTierBadge').textContent = '👤 Regular User — Upload data, fetch/view entries, and edit entries.';
-              }
-            };
-          }
-
-          if ($('ui')) {
-            $('ui').oninput = e => {
-              const val = e.target.value.trim().toLowerCase();
-              const norm = /^\d+$/.test(val) ? val.padStart(4, '0') : val;
-              let badge = '';
-              if (['0001', '0007'].includes(norm)) {
-                if (isSuperAdmin) {
-                  badge = '👑 Super Administrator (' + norm + ') — Full Unrestricted Control (Reserved ID)';
-                  if ($('ur2')) $('ur2').value = 'super_admin';
-                } else {
-                  badge = '⚠️ Super Admin accounts (0001, 0007) can only be created by Super Admins.';
-                }
-              } else if (['0002', '0003', '0004'].includes(norm)) {
-                badge = '⭐ Master Admin (' + norm + ') — Full Access (Protected Deletion)';
-                if ($('ur2')) $('ur2').value = 'master_admin';
-              } else if (['0005', '0006', '0008', '0009', '0010'].includes(norm)) {
-                badge = '🛡️ Regular Admin (' + norm + ') — Entry & Admin Deletion Privileges';
-                if ($('ur2')) $('ur2').value = 'admin_user';
-              } else {
-                badge = 'Role Tier: ' + ($('ur2') ? $('ur2').options[$('ur2').selectedIndex].text : 'Master Admin');
-              }
-              if ($('roleTierBadge')) $('roleTierBadge').textContent = badge;
-            };
-          }
-
-          // Populate Customer Scope options
-          if ($('uScopedCust')) {
-            api('/api/customers').then(custs => {
-              const sel = $('uScopedCust');
+          // Populate Customer Scope options for both card and modal forms
+          api('/api/customers').then(custs => {
+            ['uScopedCust', 'uScopedCust-modal'].forEach(selId => {
+              const sel = $(selId);
+              if (!sel) return;
               const cur = sel.value;
               sel.innerHTML = '<option value="">🌐 Global (All Customers)</option>';
               (custs || []).forEach(c => {
@@ -4511,43 +4537,105 @@ This employee will immediately lose all access credentials to CustomerVault.`,
                 sel.appendChild(opt);
               });
               if (cur) sel.value = cur;
-            }).catch(() => {});
-          }
+            });
+          }).catch(() => {});
 
-          if ($('uadd')) {
-            $('uadd').onclick = async () => {
-              const name = ($('un')?.value || '').trim();
-              const user_id = ($('ui')?.value || '').trim();
-              const password = $('up')?.value || '';
-              const role = ($('ur2') && $('ur2').value) || 'master_admin';
-              const scopedVal = $('uScopedCust')?.value;
-              if (!name || !user_id || !password) { cv.toast('Please complete all required fields', 'warn'); return; }
-              const norm = /^\d+$/.test(user_id) ? user_id.padStart(4, '0') : user_id;
-              if (['0001', '0007'].includes(norm) || role === 'super_admin') {
-                if (!isSuperAdmin) {
+          const bindUserCreateForm = (suffix) => {
+            const optSuper = $(`optSuperAdminRole${suffix}`);
+            const roleSel = $(`ur2${suffix}`);
+            const badgeEl = $(`roleTierBadge${suffix}`);
+            const idInp = $(`ui${suffix}`);
+            const nameInp = $(`un${suffix}`);
+            const pwInp = $(`up${suffix}`);
+            const scopeSel = $(`uScopedCust${suffix}`);
+            const addBtn = $(`uadd${suffix}`);
+
+            if (optSuper) {
+              optSuper.hidden = !isSuperAdmin;
+              optSuper.disabled = !isSuperAdmin;
+            }
+            if (roleSel) {
+              roleSel.value = 'master_admin';
+              roleSel.onchange = () => {
+                if (badgeEl) badgeEl.textContent = roleBadgeLabel(roleSel.value);
+              };
+            }
+            if (badgeEl) badgeEl.textContent = roleBadgeLabel('master_admin');
+
+            if (idInp) {
+              idInp.oninput = e => {
+                const val = e.target.value.trim().toLowerCase();
+                const norm = /^\d+$/.test(val) ? val.padStart(4, '0') : val;
+                let badge = '';
+                if (['0001', '0007'].includes(norm)) {
+                  if (isSuperAdmin) {
+                    badge = '👑 Super Administrator (' + norm + ') — Full Unrestricted Control (Reserved ID)';
+                    if (roleSel) roleSel.value = 'super_admin';
+                  } else {
+                    badge = '⚠️ Super Admin accounts (0001, 0007) can only be created by Super Admins.';
+                  }
+                } else if (['0002', '0003', '0004'].includes(norm)) {
+                  badge = '⭐ Master Admin (' + norm + ') — Full Access (Protected Deletion)';
+                  if (roleSel) roleSel.value = 'master_admin';
+                } else if (['0005', '0006', '0008', '0009', '0010'].includes(norm)) {
+                  badge = '🛡️ Regular Admin (' + norm + ') — Entry & Admin Deletion Privileges';
+                  if (roleSel) roleSel.value = 'admin_user';
+                } else if (val) {
+                  badge = 'Role Tier: ' + (roleSel ? roleSel.options[roleSel.selectedIndex].text : 'Master Admin');
+                } else {
+                  badge = roleBadgeLabel(roleSel ? roleSel.value : 'master_admin');
+                }
+                if (badgeEl) badgeEl.textContent = badge;
+              };
+            }
+
+            if (addBtn) {
+              addBtn.onclick = async () => {
+                const name = (nameInp?.value || '').trim();
+                const user_id = (idInp?.value || '').trim();
+                const password = pwInp?.value || '';
+                const role = (roleSel && roleSel.value) || 'master_admin';
+                const scopedVal = scopeSel?.value;
+                if (!name) { cv.toast('Please enter the employee Full Name.', 'warn'); nameInp?.focus(); return; }
+                if (!user_id) { cv.toast('Please enter a Login ID.', 'warn'); idInp?.focus(); return; }
+                if (password.length < 8) { cv.toast('Initial Password must be at least 8 characters.', 'warn'); pwInp?.focus(); return; }
+                const norm = /^\d+$/.test(user_id) ? user_id.padStart(4, '0') : user_id;
+                if ((['0001', '0007'].includes(norm) || role === 'super_admin') && !isSuperAdmin) {
                   cv.toast('Only Super Admins have authority to provision Super Admin accounts.', 'err');
                   return;
                 }
-              }
-              try {
-                const payload = { name, user_id, password, role };
-                if (scopedVal && /^\d+$/.test(scopedVal)) {
-                  payload.permissions = { scoped_customer_id: parseInt(scopedVal, 10) };
+                const origText = addBtn.textContent;
+                addBtn.disabled = true;
+                addBtn.textContent = 'Creating…';
+                try {
+                  const payload = { name, user_id, password, role };
+                  if (scopedVal && /^\d+$/.test(scopedVal)) {
+                    payload.permissions = { scoped_customer_id: parseInt(scopedVal, 10) };
+                  }
+                  await api('/api/users', { method: 'POST', body: JSON.stringify(payload) });
+                  cv.toast(`Employee account for ${user_id} created successfully!`, 'ok');
+                  if (nameInp) nameInp.value = '';
+                  if (idInp) idInp.value = '';
+                  if (pwInp) pwInp.value = '';
+                  if (roleSel) roleSel.value = 'master_admin';
+                  if (scopeSel) scopeSel.value = '';
+                  if (badgeEl) badgeEl.textContent = roleBadgeLabel('master_admin');
+                  await loadUsersContainer();
+                  if (typeof loadLoginInventory === 'function') loadLoginInventory();
+                } catch (err) {
+                  fail(err);
+                } finally {
+                  addBtn.disabled = false;
+                  addBtn.textContent = origText;
                 }
-                await api('/api/users', { method: 'POST', body: JSON.stringify(payload) });
-                cv.toast(`Employee account for ${user_id} created successfully!`, 'ok');
-                if ($('un')) $('un').value = '';
-                if ($('ui')) $('ui').value = '';
-                if ($('up')) $('up').value = '';
-                if ($('ur2')) $('ur2').value = 'master_admin';
-                if ($('uScopedCust')) $('uScopedCust').value = '';
-                if ($('roleTierBadge')) $('roleTierBadge').textContent = '';
-                loadUsersContainer();
-              } catch (err) { fail(err); }
-            };
-          }
+              };
+            }
+          };
+
+          bindUserCreateForm('');
+          bindUserCreateForm('-modal');
         } catch (err) {
-          document.querySelectorAll('#usersTableWrap').forEach(wrap => {
+          document.querySelectorAll('#usersTableWrap, #usersTableWrap-modal').forEach(wrap => {
             wrap.innerHTML = `<div class="empty err">${esc(err.message)}</div>`;
           });
         }
@@ -4730,9 +4818,9 @@ This employee will immediately lose all access credentials to CustomerVault.`,
         if (isSuperAdmin || isMasterAdmin) {
           acts = `
             <div style="display:flex;gap:6px">
-              <button class="b" style="height:28px;padding:0 8px;font-size:12px;font-weight:700" onclick='openUserPermissionsModal(${JSON.stringify(u)})' title="Configure permissions">🛡️ Permissions</button>
-              <button class="b" style="height:28px;padding:0 8px;font-size:12px" onclick="openAdminEditNameModal('${u.id}', '${esc(u.name)}')">✏️ Name</button>
-              ${!isOtherSuper ? `<button class="b" style="height:28px;padding:0 8px;font-size:12px" onclick="openAdminChangePwdModal('${u.id}', '${esc(u.name)}')">🔑 Password</button>` : ''}
+              <button type="button" class="b" style="height:28px;padding:0 8px;font-size:12px;font-weight:700" data-login-act="perm" data-uid="${u.id}" title="Configure permissions">🛡️ Permissions</button>
+              <button type="button" class="b" style="height:28px;padding:0 8px;font-size:12px" data-login-act="editname" data-uid="${u.id}">✏️ Name</button>
+              ${!isOtherSuper ? `<button type="button" class="b" style="height:28px;padding:0 8px;font-size:12px" data-login-act="resetpw" data-uid="${u.id}">🔑 Password</button>` : ''}
             </div>
           `;
         } else {
@@ -4768,6 +4856,16 @@ This employee will immediately lose all access credentials to CustomerVault.`,
           </table>
         </div>
       `;
+      wrap.onclick = (ev) => {
+        const btn = ev.target.closest('[data-login-act][data-uid]');
+        if (!btn) return;
+        const uid = parseInt(btn.dataset.uid, 10);
+        const target = _allLoginInvUsers.find(x => x.id === uid);
+        if (!target) return;
+        if (btn.dataset.loginAct === 'perm') openUserPermissionsModal(target);
+        else if (btn.dataset.loginAct === 'editname') openAdminEditUserNameModal(target);
+        else if (btn.dataset.loginAct === 'resetpw') openAdminResetPasswordModal(target);
+      };
     };
 
     // Search Audit Trail Logic
@@ -5167,6 +5265,7 @@ This employee will immediately lose all access credentials to CustomerVault.`,
       if (!dlg) return;
       if (!dlg.open) dlg.showModal();
       loadSensoriseStatus();
+      loadSensoriseBasicValues();
     };
 
     window.copySensoriseUrl = async function(url, label) {
@@ -5227,14 +5326,26 @@ This employee will immediately lose all access credentials to CustomerVault.`,
       }
     }
 
+    let _settingsAutoRenewing = false;
+    let _settingsLastAutoAttempt = 0;
+
+    function parseSensoriseIstTime(str) {
+      if (!str) return NaN;
+      const s = String(str).trim();
+      if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}$/.test(s)) {
+        return Date.parse(s.replace(' ', 'T') + '+05:30');
+      }
+      let t = Date.parse(s.replace(' ', 'T'));
+      return isNaN(t) ? Date.parse(s) : t;
+    }
+
     function updateTokenCountdown(expiryStr) {
       if (!expiryStr) {
         if ($('dlgTokenCountdownText')) $('dlgTokenCountdownText').textContent = 'Unknown';
         if ($('sensoriseCardTokenCountdown')) $('sensoriseCardTokenCountdown').textContent = 'Unknown';
         return;
       }
-      let expTime = Date.parse(expiryStr.replace(' ', 'T'));
-      if (isNaN(expTime)) expTime = Date.parse(expiryStr);
+      const expTime = parseSensoriseIstTime(expiryStr);
       if (isNaN(expTime)) {
         if ($('dlgTokenCountdownText')) $('dlgTokenCountdownText').textContent = expiryStr;
         return;
@@ -5246,12 +5357,21 @@ This employee will immediately lose all access credentials to CustomerVault.`,
       const elBadge = $('dlgTokenStateBadge');
 
       if (diff <= 0) {
-        const text = '⚠️ Expired';
+        const now = Date.now();
+        const shouldAutoRenew = !_settingsAutoRenewing && (now - _settingsLastAutoAttempt) >= 30000 && typeof window.refreshSensoriseToken === 'function';
+        const text = shouldAutoRenew || _settingsAutoRenewing ? '⏳ Renewing…' : '⚠️ Expired';
         if (elDlg) { elDlg.textContent = text; elDlg.style.color = 'var(--danger)'; }
         if (elCard) { elCard.textContent = text; elCard.style.color = 'var(--danger)'; }
         if (elBadge) {
           elBadge.className = 'badge danger';
-          elBadge.textContent = '🔴 Expired';
+          elBadge.textContent = shouldAutoRenew || _settingsAutoRenewing ? '🔄 Auto-Renewing' : '🔴 Expired';
+        }
+        if (shouldAutoRenew) {
+          _settingsAutoRenewing = true;
+          _settingsLastAutoAttempt = now;
+          window.refreshSensoriseToken(true).catch(() => {}).finally(() => {
+            _settingsAutoRenewing = false;
+          });
         }
       } else {
         const hours = Math.floor(diff / (1000 * 60 * 60));
@@ -5273,21 +5393,31 @@ This employee will immediately lose all access credentials to CustomerVault.`,
 
         // Server Status & Message
         const sStatus = res?.server_status || {};
+        const tokenLife = res?.token_lifecycle || {};
+        const isQuota = Boolean(sStatus.daily_quota_reached || tokenLife.daily_quota_reached || sStatus.api_code === 'LCM_818');
         const isConn = sStatus.connected || sStatus.status_code === 200;
         const msg = sStatus.message || (isConn ? 'Connected and authorized on Sensorise SenseLCM server successfully (LCM_001).' : 'Server unreachable.');
         
         if ($('dlgSensoriseStatusMsg')) $('dlgSensoriseStatusMsg').textContent = msg;
         if ($('dlgSensoriseLiveBadge')) {
-          $('dlgSensoriseLiveBadge').className = isConn ? 'badge ok' : 'badge danger';
-          $('dlgSensoriseLiveBadge').textContent = isConn ? `🟢 Connected (${sStatus.api_code || '200'})` : '🔴 Offline';
+          $('dlgSensoriseLiveBadge').className = isQuota ? 'badge warn' : (isConn ? 'badge ok' : 'badge danger');
+          $('dlgSensoriseLiveBadge').textContent = isQuota ? '🟡 Quota Limit (LCM_818)' : (isConn ? `🟢 Connected (${sStatus.api_code || '200'})` : '🔴 Offline');
         }
         if ($('sensoriseCardStatusBadge')) {
-          $('sensoriseCardStatusBadge').className = isConn ? 'badge ok' : 'badge danger';
-          $('sensoriseCardStatusBadge').textContent = isConn ? '🟢 Live Connected' : '🔴 Server Offline';
+          $('sensoriseCardStatusBadge').className = isQuota ? 'badge warn' : (isConn ? 'badge ok' : 'badge danger');
+          $('sensoriseCardStatusBadge').textContent = isQuota ? '🟡 Quota Reached (LCM_818)' : (isConn ? '🟢 Live Connected' : '🔴 Server Offline');
+        }
+        const qBanner = $('dlgSensoriseQuotaBanner');
+        if (qBanner) {
+          if (isQuota) {
+            qBanner.style.display = 'block';
+            qBanner.textContent = '⚠️ Sensorise server daily limit reached (LCM_818: Maximum 100 API calls/day). Showing cached & database SIM telematics below until Sensorise resets the daily quota.';
+          } else {
+            qBanner.style.display = 'none';
+          }
         }
 
         // Token Expiration
-        const tokenLife = res?.token_lifecycle || {};
         const expiry = tokenLife.expiry || sStatus.token_expiry || '--';
         if ($('dlgTokenExpiryText')) $('dlgTokenExpiryText').textContent = expiry;
         if ($('sensoriseCardTokenExpiry')) $('sensoriseCardTokenExpiry').textContent = expiry;
@@ -5375,6 +5505,95 @@ This employee will immediately lose all access credentials to CustomerVault.`,
         setTimeout(() => {
           if (feedback) feedback.textContent = '';
         }, 5000);
+      }
+    };
+
+    let _sensoriseBasicRowsCache = [];
+
+    function renderSensoriseBasicTable(rows) {
+      const wrap = $('dlgSensoriseValuesTableWrap');
+      if (!wrap) return;
+      if (!Array.isArray(rows) || !rows.length) {
+        wrap.innerHTML = '<div style="padding:18px;text-align:center;color:var(--muted);font-size:12.5px">No Sensorise SIM values found in local cache table yet.</div>';
+        return;
+      }
+      const preview = rows.slice(0, 100);
+      wrap.innerHTML = `
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead>
+            <tr style="background:var(--card);border-bottom:1px solid var(--line);text-align:left;position:sticky;top:0">
+              <th style="padding:8px 10px">ICCID</th>
+              <th style="padding:8px 10px">MSISDN 1</th>
+              <th style="padding:8px 10px">MSISDN 2</th>
+              <th style="padding:8px 10px">Act Date</th>
+              <th style="padding:8px 10px">Expiry Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${preview.map(r => `
+              <tr style="border-bottom:1px solid var(--line)">
+                <td style="padding:7px 10px;font-family:monospace">${esc(r[2] || '—')}</td>
+                <td style="padding:7px 10px;font-weight:600">${esc(r[3] || '—')}</td>
+                <td style="padding:7px 10px">${esc(r[4] || '—')}</td>
+                <td style="padding:7px 10px">${esc(r[5] || '—')}</td>
+                <td style="padding:7px 10px">${esc(r[6] || '—')}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+        ${rows.length > 100 ? `<div style="padding:8px 12px;font-size:11.5px;color:var(--muted);background:var(--card)">Showing first 100 of ${rows.length} cached Sensorise records. Use search to filter.</div>` : ''}
+      `;
+    }
+
+    window.filterSensoriseBasicRows = function(q) {
+      const term = String(q || '').trim().toLowerCase();
+      if (!term) {
+        renderSensoriseBasicTable(_sensoriseBasicRowsCache);
+        return;
+      }
+      const filtered = _sensoriseBasicRowsCache.filter(r =>
+        r.some(cell => String(cell || '').toLowerCase().includes(term))
+      );
+      renderSensoriseBasicTable(filtered);
+    };
+
+    window.loadSensoriseBasicValues = async function() {
+      const wrap = $('dlgSensoriseValuesTableWrap');
+      const sub = $('dlgSensoriseValuesSubtitle');
+      try {
+        const res = await api('/api/sensorise-basic?limit=500&all=true');
+        _sensoriseBasicRowsCache = Array.isArray(res?.rows) ? res.rows : [];
+        if (sub) {
+          sub.textContent = `Showing ${_sensoriseBasicRowsCache.length} synced Sensorise ICCID, MSISDN 1, MSISDN 2, Activation Date & Expiry Date records.`;
+        }
+        renderSensoriseBasicTable(_sensoriseBasicRowsCache);
+      } catch (err) {
+        if (wrap) {
+          wrap.innerHTML = `<div style="padding:16px;text-align:center;color:var(--danger);font-size:12px">Could not load Sensorise values: ${esc(err.message)}</div>`;
+        }
+      }
+    };
+
+    window.fetchSensoriseValuesNow = async function() {
+      const btn = $('btnDlgFetchBasicNow');
+      const sp = $('dlgFetchBasicSpinner');
+      try {
+        if (btn) btn.disabled = true;
+        if (sp) sp.style.display = 'inline';
+        toast('Syncing telematics values with Sensorise server…');
+        const res = await api('/api/sensorise/fetch-basic-telematics', { method: 'POST' });
+        if (Array.isArray(res?.rows)) {
+          _sensoriseBasicRowsCache = res.rows;
+          renderSensoriseBasicTable(_sensoriseBasicRowsCache);
+        } else {
+          await loadSensoriseBasicValues();
+        }
+        await loadSensoriseStatus(false);
+        toast(res?.message || 'Sensorise telematics values refreshed.', 'ok');
+      } catch (err) {
+        toast(`⚠️ Sensorise fetch notice: ${err.message}`, 'warn');
+      } finally {
+        if (btn) btn.disabled = false;
+        if (sp) sp.style.display = 'none';
       }
     };
 

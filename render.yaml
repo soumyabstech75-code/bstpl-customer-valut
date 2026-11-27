@@ -13,9 +13,9 @@ services:
       - key: DB_PORT
         value: "4000"
       - key: DB_USER
-        value: 2qvzCb4ckY28YTR.root
+        value: 2vXSDD24rFvcqpL.root
       - key: DB_PASSWORD
-        value: TkUlyIt79g9JLww0
+        value: G5hQndQULHq6xABn
       - key: DB_NAME
         value: customer_database
       - key: DB_SSL

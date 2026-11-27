@@ -75,7 +75,7 @@ In your Render Web Service dashboard, go to the **Environment** tab and add the 
 |---|---|---|
 | `DB_HOST` | `gateway01.ap-northeast-1.prod.aws.tidbcloud.com` | TiDB Cloud Host |
 | `DB_PORT` | `4000` | Port |
-| `DB_USER` | `2qvzCb4ckY28YTR.root` | TiDB Username |
+| `DB_USER` | `2vXSDD24rFvcqpL.root` | TiDB Username |
 | `DB_PASSWORD` | `<your-tidb-password>` | TiDB Password |
 | `DB_NAME` | `customer_database` | Database Name |
 | `DB_SSL` | `true` | Required for TiDB Cloud |

@@ -35,7 +35,7 @@ except ImportError:
 
 from activity import log_activity
 from auth import get_current_user, require_admin, require_staff, require_permission, get_user_permissions
-from database import get_db, SessionLocal
+from database import get_db, SessionLocal, run_db_read_retry
 
 # Every route here needs a signed-in user.
 router = APIRouter(prefix="/api", dependencies=[Depends(get_current_user)])
@@ -1118,19 +1118,27 @@ def list_devices(customer_id: Optional[int] = None, q: str = "", column: Optiona
     cur_page_size = int(page_size.default if hasattr(page_size, 'default') else page_size)
     total = query.count()
     items = query.offset((cur_page - 1) * cur_page_size).limit(cur_page_size).all()
-    # Fetch live MSISDN1, MSISDN2, Act Date, Expiry Date from Sensorise server and update DB
+    # Fetch live MSISDN1, MSISDN2, Act Date, Expiry Date from Sensorise when searching;
+    # use cache/DB during unfiltered pagination so browsing does not exhaust the daily API quota.
     try:
-        items = sync_devices_with_sensorise(db, items)
+        items = sync_devices_with_sensorise(db, items, cache_only=not bool(q and q.strip()))
     except Exception as _sync_err:
-        pass
+        logger.warning(f"Sensorise sync notice: {_sync_err}")
     if q and q.strip():
         cust_str = f"Customer ID {customer_id}" if customer_id else "All Customers"
         try:
             log_activity(db, "search", f"Device Search: '{q.strip()}' [Field: {column or 'all'}, {cust_str}, Results: {total}]", user=user, commit=True)
         except Exception:
             pass
+    sensorise_quota_active = False
+    try:
+        from sensorise.sensorise import sensorise_client as _sc
+        sensorise_quota_active = bool(_sc and _sc.is_daily_quota_active())
+    except Exception:
+        pass
     return {"total": total, "page": cur_page, "page_size": cur_page_size,
-            "pages": max(1, -(-total // cur_page_size)), "items": [out(d) for d in items]}
+            "pages": max(1, -(-total // cur_page_size)), "items": [out(d) for d in items],
+            "sensorise_status": {"daily_quota_reached": sensorise_quota_active}}
 
 
 # ==============================================================================
@@ -1477,7 +1485,7 @@ def bulk_validate(data: schemas.BulkIn, compact: bool = False, db: Session = Dep
                 status.append("D")
                 set_reason(i, reason)
                 continue
-            row_dict.update(entry_type="Invalid", status="Invalid", reason=reason + " (will still be uploaded as it is)")
+            row_dict.update(entry_type="Invalid", status="Invalid", reason=reason + " (Errored Entry — will be saved to Errored Entries)")
             invalids.append(row_dict)
             status.append("I")
             set_reason(i, reason)
@@ -1894,6 +1902,201 @@ def bulk_add(data: schemas.BulkIn, db: Session = Depends(get_db),
     }
 
 
+def _get_simple_quota(db: Session) -> models.SimpleUploadQuota:
+    models.SimpleUploadQuota.__table__.create(bind=db.get_bind(), checkfirst=True)
+    q = db.query(models.SimpleUploadQuota).filter(models.SimpleUploadQuota.id == 1).first()
+    if not q:
+        q = models.SimpleUploadQuota(id=1, uses_completed=0, active_run_id=None, active_run_pushed=False, purged=False)
+        db.add(q)
+        db.commit()
+        db.refresh(q)
+    return q
+
+
+@router.get("/devices/bulk/simple/status", dependencies=[Depends(require_permission("upload"))])
+def simple_upload_status(db: Session = Depends(get_db)):
+    q = _get_simple_quota(db)
+    used = int(q.uses_completed or 0)
+    if q.purged or used >= 3:
+        return {"available": False}
+    return {"available": True, "remaining": max(0, 3 - used), "max_uses": 3}
+
+
+@router.post("/devices/bulk/simple/start", dependencies=[Depends(require_permission("upload"))])
+def simple_upload_start(db: Session = Depends(get_db)):
+    q = _get_simple_quota(db)
+    if q.active_run_pushed and q.active_run_id:
+        q.uses_completed = int(q.uses_completed or 0) + 1
+        q.active_run_id = None
+        q.active_run_pushed = False
+        if q.uses_completed >= 3:
+            q.purged = True
+            db.commit()
+            raise HTTPException(404, "Not found")
+    if q.purged or int(q.uses_completed or 0) >= 3:
+        raise HTTPException(404, "Not found")
+    run_id = uuid.uuid4().hex
+    q.active_run_id = run_id
+    q.active_run_pushed = False
+    db.commit()
+    return {"ok": True, "run_id": run_id, "remaining": max(0, 3 - int(q.uses_completed or 0))}
+
+
+@router.post("/devices/bulk/simple/batch", dependencies=[Depends(require_permission("upload"))])
+def simple_upload_batch(data: schemas.SimpleUploadBatchIn, db: Session = Depends(get_db),
+                        user: models.User = Depends(get_current_user)):
+    """Direct upload mode: excludes duplicates (in-batch and already in DB) and pushes all remaining rows
+    (including errored/improper entries) directly into sim_devices and per-customer SQL tables."""
+    q = _get_simple_quota(db)
+    if q.purged or int(q.uses_completed or 0) >= 3 or not q.active_run_id or q.active_run_id != data.run_id:
+        raise HTTPException(404, "Not found")
+    if not q.active_run_pushed:
+        q.active_run_pushed = True
+        db.commit()
+
+    rows = data.rows
+    iccids, imeis, srnos, prepared = set(), set(), set(), []
+    for r in rows:
+        raw_iccid = str(r.iccid or "").strip()[:30]
+        raw_imei = str(r.imei or "").strip()
+        raw_sr = str(r.device_sr_no or "").strip()[:50]
+        imei = effective_imei(raw_imei, raw_sr, raw_iccid)
+        prepared.append((r, raw_iccid, raw_imei, raw_sr, imei))
+        if raw_iccid:
+            iccids.add(raw_iccid)
+        if imei:
+            imeis.add(imei)
+        if raw_sr:
+            srnos.add(raw_sr)
+
+    ex_iccid, ex_imei, ex_sr = set(), set(), set()
+    for keys, col, target in ((sorted(iccids), Device.iccid, ex_iccid),
+                              (sorted(imeis), Device.imei, ex_imei),
+                              (sorted(srnos), Device.device_sr_no, ex_sr)):
+        for i in range(0, len(keys), 2000):
+            for (v,) in db.query(col).filter(col.in_(keys[i:i + 2000])):
+                if v:
+                    target.add(str(v).strip().lower())
+
+    cache, excluded_dups, failed = {}, 0, []
+    seen_iccid, seen_imei, seen_sr = set(), set(), set()
+    new_rows, mirror_by_imei, names = [], {}, set()
+
+    for r, raw_iccid, raw_imei, raw_sr, imei in prepared:
+        label = raw_iccid or raw_imei or raw_sr or "(blank row)"
+        try:
+            generated = imei is None
+            if generated:
+                imei = "INV_" + uuid.uuid4().hex[:12].upper()
+            ck = iccid_key(raw_iccid)
+            ik = imei.lower()
+            sk = raw_sr.lower()
+
+            is_dup = (
+                (ck and (ck in seen_iccid or ck in ex_iccid))
+                or (not generated and (ik in seen_imei or ik in ex_imei))
+                or (sk and (sk in seen_sr or sk in ex_sr))
+            )
+            if is_dup:
+                excluded_dups += 1
+                continue
+
+            cust_name = str(r.customer_name or "").strip() or "General_Customer"
+            ckey = cust_name.lower().replace("_", " ")
+            if ckey not in cache:
+                cache[ckey] = customer_by_name(db, cust_name)
+            cust = cache[ckey]
+
+            exp = r.expiry_date or (r.act_date + timedelta(days=365) if r.act_date else None)
+            stype = (r.sim_type or classify_sim_type(raw_iccid))[:20]
+            extra = clean_extra(r.extra)
+            names.update(extra)
+
+            row_vals = {}
+            for f in TEXT_FIELDS:
+                val = getattr(r, f, None)
+                row_vals[f] = str(val).strip()[:FIELD_MAX_LEN.get(f, 100)] if val is not None and str(val).strip() != "" else None
+
+            new_rows.append(dict(
+                customer_id=cust.id, imei=imei, act_date=r.act_date, expiry_date=exp,
+                dispatched_date=r.dispatched_date, sim_type=stype, extra=extra or None,
+                added_by=user.id, **row_vals
+            ))
+            mirror_by_imei[imei] = (cust.id, cust.name, {
+                "imei": imei, "customer_name": cust.name[:100], "act_date": r.act_date,
+                "expiry_date": exp, "dispatched_date": r.dispatched_date,
+                "sim_type": stype, "extra": extra, **row_vals
+            })
+            if raw_iccid:
+                seen_iccid.add(ck)
+            if not generated:
+                seen_imei.add(ik)
+            if raw_sr:
+                seen_sr.add(sk)
+        except Exception as row_err:
+            failed.append({"imei": label, "reason": _short_err(row_err)})
+
+    try:
+        db.commit()
+    except Exception as ce:
+        db.rollback()
+        raise HTTPException(500, f"Could not save customer records: {_short_err(ce)}")
+
+    inserted, insert_failed = insert_chunk(db, new_rows)
+    failed.extend(insert_failed)
+
+    if names:
+        try:
+            register_columns(db, names)
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            print(f"Column registry update failed: {e}")
+
+    mirror_ok = True
+    mirror = [mirror_by_imei[r["imei"]] for r in inserted if r["imei"] in mirror_by_imei]
+    if mirror:
+        try:
+            if getattr(getattr(db, "bind", None), "dialect", None) and getattr(db.bind.dialect, "name", "") == "sqlite":
+                customer_tables.mirror_rows(mirror, conn=db.connection())
+                db.commit()
+            else:
+                customer_tables.mirror_rows(mirror)
+        except Exception as e:
+            mirror_ok = False
+            print(f"Customer table sync failed: {e}")
+
+    log_activity(db, "device_upload",
+                 f"{len(inserted)} new entries added, {excluded_dups} duplicate(s) excluded, {len(failed)} failed (batch of {len(rows)})",
+                 user=user)
+
+    return {
+        "ok": True,
+        "added": len(inserted),
+        "excluded_duplicates": excluded_dups,
+        "total_processed": len(rows),
+        "failed": len(failed),
+        "failed_rows": failed[:200],
+        "mirror_ok": mirror_ok,
+    }
+
+
+@router.post("/devices/bulk/simple/finish", dependencies=[Depends(require_permission("upload"))])
+def simple_upload_finish(data: schemas.SimpleUploadRunIn, db: Session = Depends(get_db)):
+    q = _get_simple_quota(db)
+    if q.purged:
+        raise HTTPException(404, "Not found")
+    if q.active_run_id == data.run_id:
+        q.uses_completed = int(q.uses_completed or 0) + 1
+        q.active_run_id = None
+        q.active_run_pushed = False
+        if q.uses_completed >= 3:
+            q.purged = True
+        db.commit()
+    used = int(q.uses_completed or 0)
+    return {"ok": True, "remaining": max(0, 3 - used), "purged": bool(q.purged or used >= 3)}
+
+
 @router.post("/devices/bulk/update", dependencies=[Depends(require_permission("upload")), Depends(require_permission("edit"))])
 def bulk_update_existing(data: schemas.BulkIn, db: Session = Depends(get_db),
                          user: models.User = Depends(get_current_user)):
@@ -2084,13 +2287,14 @@ def bulk_fetch(data: schemas.BulkFetchIn, db: Session = Depends(get_db)):
             and_(or_(Device.sim_type.is_(None), Device.sim_type == ''), or_(Device.iccid.is_(None), Device.iccid == ''))
         ))
 
-    exact_items = []
-    chunk_size = 500
+    exact_by_id = {}
+    chunk_size = 250
     for i in range(0, len(terms), chunk_size):
         sub_terms = terms[i:i + chunk_size]
-        q = base_query
         if field == "imei":
-            q = q.filter(Device.imei.in_(sub_terms))
+            rows = run_db_read_retry(db, lambda: base_query.filter(Device.imei.in_(sub_terms)).all())
+            for r in rows:
+                exact_by_id[r.id] = r
         elif field in ("iccid", "ccid"):
             clean_terms = [clean_iccid(x) for x in sub_terms if x]
             stripped_terms = [c.rstrip("F") for c in clean_terms if c]
@@ -2100,41 +2304,84 @@ def bulk_fetch(data: schemas.BulkFetchIn, db: Session = Depends(get_db)):
             iccid_conds = [Device.iccid.in_(iccid_search)]
             if p19:
                 iccid_conds.append(func.left(Device.iccid, 19).in_(p19))
-            q = q.filter(or_(*iccid_conds))
+            rows = run_db_read_retry(db, lambda: base_query.filter(or_(*iccid_conds)).all())
+            for r in rows:
+                exact_by_id[r.id] = r
         elif field == "device_sr_no":
-            q = q.filter(Device.device_sr_no.in_(sub_terms))
+            rows = run_db_read_retry(db, lambda: base_query.filter(Device.device_sr_no.in_(sub_terms)).all())
+            for r in rows:
+                exact_by_id[r.id] = r
         elif field == "msisdn1":
-            q = q.filter(Device.msisdn1.in_(sub_terms))
+            rows = run_db_read_retry(db, lambda: base_query.filter(Device.msisdn1.in_(sub_terms)).all())
+            for r in rows:
+                exact_by_id[r.id] = r
         elif field == "customer_name":
-            q = q.join(Customer).filter(Customer.name.in_(sub_terms))
+            rows = run_db_read_retry(db, lambda: base_query.join(Customer).filter(Customer.name.in_(sub_terms)).all())
+            for r in rows:
+                exact_by_id[r.id] = r
         elif field not in ("all", ""):
             # Specific unique/custom column search in bulk fetch
             unique_conds = []
             for t in sub_terms:
                 unique_conds.append(func.json_unquote(func.json_extract(Device.extra, f'$."{field}"')) == t)
-                unique_conds.append(cast(Device.extra, String).like(f'%"{t}"%'))
-            q = q.filter(or_(*unique_conds))
+                unique_conds.append(cast(Device.extra, String).like(f'%"{escape_like(t)}"%'))
+            rows = run_db_read_retry(db, lambda: base_query.filter(or_(*unique_conds)).all())
+            for r in rows:
+                exact_by_id[r.id] = r
         else:
+            # Split into separate indexed column lookups so TiDB/MySQL uses B-tree indexes
+            # instead of a multi-column OR + full-table-scan LIKE that triggers OperationalError (e3q8).
             clean_terms = [clean_iccid(x) for x in sub_terms if x]
             stripped_terms = [c.rstrip("F") for c in clean_terms if c]
             f_terms = [c.rstrip("F") + "F" for c in clean_terms if c]
             iccid_search = list(set(sub_terms + clean_terms + stripped_terms + f_terms))
-            extra_matches = [cast(Device.extra, String).like(f'%"{t}"%') for t in sub_terms[:50]]
-            q = q.filter(or_(
-                Device.imei.in_(sub_terms),
-                Device.iccid.in_(iccid_search),
-                Device.device_sr_no.in_(sub_terms),
-                Device.msisdn1.in_(sub_terms),
-                Device.msisdn2.in_(sub_terms),
-                *extra_matches
-            ))
-        exact_items.extend(q.all())
+
+            for col, vals in (
+                (Device.imei, sub_terms),
+                (Device.iccid, iccid_search),
+                (Device.device_sr_no, sub_terms),
+                (Device.msisdn1, sub_terms),
+                (Device.msisdn2, sub_terms),
+            ):
+                if not vals:
+                    continue
+                rows = run_db_read_retry(
+                    db, lambda c=col, v=vals: base_query.filter(c.in_(v)).all()
+                )
+                for r in rows:
+                    exact_by_id[r.id] = r
+
+            # Only scan Device.extra for terms not already found in indexed columns
+            matched_vals = set()
+            for r in exact_by_id.values():
+                for val in (r.imei, r.iccid, r.device_sr_no, r.msisdn1, r.msisdn2):
+                    if val:
+                        matched_vals.add(val)
+                        c_val = clean_iccid(val)
+                        if c_val:
+                            matched_vals.add(c_val)
+                            matched_vals.add(c_val.rstrip("F"))
+            unmatched_for_extra = [
+                t for t in sub_terms
+                if t not in matched_vals and clean_iccid(t) not in matched_vals and clean_iccid(t).rstrip("F") not in matched_vals
+            ][:50]
+            for j in range(0, len(unmatched_for_extra), 10):
+                extra_chunk = unmatched_for_extra[j:j + 10]
+                extra_conds = [cast(Device.extra, String).like(f'%"{escape_like(t)}"%') for t in extra_chunk]
+                rows = run_db_read_retry(
+                    db,
+                    lambda ec=extra_conds: base_query.filter(Device.extra.isnot(None), or_(*ec)).all()
+                )
+                for r in rows:
+                    exact_by_id[r.id] = r
+
+    exact_items = list(exact_by_id.values())
 
     # Fetch live MSISDN1, MSISDN2, Act Date, Expiry Date from Sensorise server and update DB
     try:
         exact_items = sync_devices_with_sensorise(db, exact_items)
     except Exception as _sync_err:
-        pass
+        logger.warning(f"Sensorise sync notice: {_sync_err}")
 
     exact_ids = {d.id for d in exact_items}
 
@@ -2193,6 +2440,7 @@ def bulk_fetch(data: schemas.BulkFetchIn, db: Session = Depends(get_db)):
                         if b_ad.lower() == p: b_ad = ""
                         if b_ed.lower() == p: b_ed = ""
 
+                    ad_parsed = _parse_sensorise_date(b_ad) if b_ad else None
                     ed_parsed = _parse_sensorise_date(b_ed) if b_ed else None
                     dl_val = (ed_parsed - date.today()).days if ed_parsed else ""
                     st_val = compute_expiry_status(ed_parsed, 30) if ed_parsed else ""
@@ -2208,8 +2456,8 @@ def bulk_fetch(data: schemas.BulkFetchIn, db: Session = Depends(get_db)):
                         "iccid": b_row[2] or ut,
                         "msisdn1": b_m1,
                         "msisdn2": b_m2,
-                        "act_date": b_ad,
-                        "expiry_date": b_ed,
+                        "act_date": ad_parsed.isoformat() if ad_parsed else b_ad,
+                        "expiry_date": ed_parsed.isoformat() if ed_parsed else b_ed,
                         "dispatched_date": "",
                         "model": "",
                         "sim_provider": "Sensorise",
@@ -2224,8 +2472,14 @@ def bulk_fetch(data: schemas.BulkFetchIn, db: Session = Depends(get_db)):
                         "has_duplicates": False,
                         "duplicate_fields": []
                     })
-            except Exception:
-                pass
+            except Exception as _basic_err:
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
+                msg = str(_basic_err).lower()
+                if "1146" in msg or "doesn't exist" in msg or "no such table" in msg:
+                    break
 
     unmatched_terms = [t for t in terms if t not in matched_term_set]
     similar_items = []
@@ -2257,7 +2511,7 @@ def bulk_fetch(data: schemas.BulkFetchIn, db: Session = Depends(get_db)):
             if clean_t:
                 sim_or.append(Device.iccid.like(f"%{escape_like(clean_t)}%"))
             sim_q = sim_q.filter(or_(*sim_or))
-        found = sim_q.limit(10).all()
+        found = run_db_read_retry(db, lambda sq=sim_q: sq.limit(10).all())
         for s in found:
             if s.id not in exact_ids and s.id not in {x.id for x in similar_items}:
                 similar_items.append(s)
@@ -2270,9 +2524,9 @@ def bulk_fetch(data: schemas.BulkFetchIn, db: Session = Depends(get_db)):
     all_iccids = [d.iccid for d in all_returned if d.iccid]
     all_srnos = [d.device_sr_no for d in all_returned if d.device_sr_no]
 
-    dup_imeis = {i for i, in db.query(Device.imei).filter(ACTIVE, Device.imei.in_(all_imeis)).group_by(Device.imei).having(func.count(Device.id) > 1)} if all_imeis else set()
-    dup_iccids = {i for i, in db.query(Device.iccid).filter(ACTIVE, Device.iccid.in_(all_iccids)).group_by(Device.iccid).having(func.count(Device.id) > 1)} if all_iccids else set()
-    dup_srnos = {i for i, in db.query(Device.device_sr_no).filter(ACTIVE, Device.device_sr_no.in_(all_srnos)).group_by(Device.device_sr_no).having(func.count(Device.id) > 1)} if all_srnos else set()
+    dup_imeis = run_db_read_retry(db, lambda: {i for i, in db.query(Device.imei).filter(ACTIVE, Device.imei.in_(all_imeis)).group_by(Device.imei).having(func.count(Device.id) > 1)}) if all_imeis else set()
+    dup_iccids = run_db_read_retry(db, lambda: {i for i, in db.query(Device.iccid).filter(ACTIVE, Device.iccid.in_(all_iccids)).group_by(Device.iccid).having(func.count(Device.id) > 1)}) if all_iccids else set()
+    dup_srnos = run_db_read_retry(db, lambda: {i for i, in db.query(Device.device_sr_no).filter(ACTIVE, Device.device_sr_no.in_(all_srnos)).group_by(Device.device_sr_no).having(func.count(Device.id) > 1)}) if all_srnos else set()
 
     def format_item(d, is_exact):
         res = out(d)
@@ -2284,13 +2538,20 @@ def bulk_fetch(data: schemas.BulkFetchIn, db: Session = Depends(get_db)):
     exact_res = [format_item(d, True) for d in exact_items] + extra_exact_records
     similar_res = [format_item(d, False) for d in similar_items]
 
+    sensorise_quota_active = False
+    try:
+        from sensorise.sensorise import sensorise_client as _sc
+        sensorise_quota_active = bool(_sc and _sc.is_daily_quota_active())
+    except Exception:
+        pass
     return {
         "exact_matches": exact_res,
         "similar_matches": similar_res,
         "total_matches": len(exact_res) + len(similar_res),
         "values_searched_count": len(terms),
         "values_found_count": len(terms) - len(not_found_values),
-        "not_found_values": not_found_values
+        "not_found_values": not_found_values,
+        "sensorise_status": {"daily_quota_reached": sensorise_quota_active}
     }
 
 
@@ -2341,6 +2602,7 @@ def fetch_sync(data: schemas.FetchSyncIn, db: Session = Depends(get_db),
     successful_records = []
     error_entries = []
     seen_error_keys = set()
+    has_basic_table = True
 
     for term in terms:
         clean_ic = clean_iccid(term)
@@ -2369,7 +2631,7 @@ def fetch_sync(data: schemas.FetchSyncIn, db: Session = Depends(get_db),
             ed_val = matched_dev.expiry_date.isoformat() if matched_dev.expiry_date else ""
 
             # Check database table sensorise_sims_basic if sim_devices is missing any
-            if (not m1_val or not m2_val or not ad_val or not ed_val) and (matched_dev.iccid or matched_dev.imei):
+            if has_basic_table and (not m1_val or not m2_val or not ad_val or not ed_val) and (matched_dev.iccid or matched_dev.imei):
                 try:
                     b_row = db.execute(text("""
                         SELECT msisdn1, msisdn2, activation_date, expiry_date
@@ -2388,8 +2650,14 @@ def fetch_sync(data: schemas.FetchSyncIn, db: Session = Depends(get_db),
                         if not m2_val and b_row[1]: m2_val = str(b_row[1]).strip()
                         if not ad_val and b_row[2]: ad_val = str(b_row[2]).strip()
                         if not ed_val and b_row[3]: ed_val = str(b_row[3]).strip()
-                except Exception:
-                    pass
+                except Exception as _basic_err:
+                    try:
+                        db.rollback()
+                    except Exception:
+                        pass
+                    msg = str(_basic_err).lower()
+                    if "1146" in msg or "doesn't exist" in msg or "no such table" in msg:
+                        has_basic_table = False
 
             successful_records.append({
                 "id": matched_dev.id,
@@ -2409,19 +2677,26 @@ def fetch_sync(data: schemas.FetchSyncIn, db: Session = Depends(get_db),
         else:
             # Check sensorise_sims_basic table before marking as not found
             basic_row = None
-            try:
-                basic_row = db.execute(text("""
-                    SELECT device_sr_no, imei, iccid, msisdn1, msisdn2, activation_date, expiry_date
-                    FROM sensorise_sims_basic
-                    WHERE iccid = :t OR iccid = :t_f OR iccid = :t_strip OR imei = :t OR device_sr_no = :t
-                    LIMIT 1
-                """), {
-                    "t": term,
-                    "t_f": term + "F",
-                    "t_strip": term.rstrip("F")
-                }).first()
-            except Exception:
-                pass
+            if has_basic_table:
+                try:
+                    basic_row = db.execute(text("""
+                        SELECT device_sr_no, imei, iccid, msisdn1, msisdn2, activation_date, expiry_date
+                        FROM sensorise_sims_basic
+                        WHERE iccid = :t OR iccid = :t_f OR iccid = :t_strip OR imei = :t OR device_sr_no = :t
+                        LIMIT 1
+                    """), {
+                        "t": term,
+                        "t_f": term + "F",
+                        "t_strip": term.rstrip("F")
+                    }).first()
+                except Exception as _basic_err:
+                    try:
+                        db.rollback()
+                    except Exception:
+                        pass
+                    msg = str(_basic_err).lower()
+                    if "1146" in msg or "doesn't exist" in msg or "no such table" in msg:
+                        has_basic_table = False
 
             if basic_row:
                 b_m1 = str(basic_row[3] or "").strip()
@@ -2475,7 +2750,7 @@ def fetch_sync(data: schemas.FetchSyncIn, db: Session = Depends(get_db),
     try:
         successful_records = sync_device_dicts_with_sensorise(db, successful_records)
     except Exception as _sync_err:
-        pass
+        logger.warning(f"Sensorise sync notice: {_sync_err}")
 
     return {
         "total_scanned": len(terms),
@@ -2886,7 +3161,7 @@ def get_device_by_id(device_id: int, db: Session = Depends(get_db)):
         try:
             sync_devices_with_sensorise(db, [d])
         except Exception as _sync_err:
-            pass
+            logger.warning(f"Sensorise sync notice: {_sync_err}")
     return out(d)
 
 
@@ -3337,7 +3612,7 @@ def errored_out(r: models.ErroredRecord):
 
 
 @router.get("/errors", dependencies=[Depends(require_permission("view"))])
-def list_errors(reason: Optional[str] = None, q: Optional[str] = None, db: Session = Depends(get_db)):
+def list_errors(reason: Optional[str] = None, q: Optional[str] = None, limit: Optional[int] = None, db: Session = Depends(get_db)):
     query = db.query(models.ErroredRecord)
     if reason and reason.strip():
         query = query.filter(models.ErroredRecord.error_reason.ilike(f"%{reason.strip()}%"))
@@ -3353,7 +3628,10 @@ def list_errors(reason: Optional[str] = None, q: Optional[str] = None, db: Sessi
                 models.ErroredRecord.error_reason.ilike(term)
             )
         )
-    rows = query.order_by(models.ErroredRecord.created_at.desc(), models.ErroredRecord.id.desc()).all()
+    query = query.order_by(models.ErroredRecord.created_at.desc(), models.ErroredRecord.id.desc())
+    if limit and limit > 0:
+        query = query.limit(limit)
+    rows = query.all()
     return [errored_out(r) for r in rows]
 
 
@@ -3380,6 +3658,46 @@ def save_errors(data: schemas.BulkErrorsIn, db: Session = Depends(get_db)):
         db.execute(insert(models.ErroredRecord), rows[k:k + 1000])
     db.commit()
     return {"saved_errors": len(rows)}
+
+
+@router.put("/errors/{error_id:int}", dependencies=[Depends(require_permission("edit"))])
+def update_errored_record(error_id: int, data: schemas.ErroredRecordIn, db: Session = Depends(get_db),
+                          user: models.User = Depends(get_current_user)):
+    """Edits an errored entry and saves the updated values directly into sim_errored_records."""
+    err = db.query(models.ErroredRecord).filter(models.ErroredRecord.id == error_id).first()
+    if not err:
+        raise HTTPException(404, "Errored record not found.")
+
+    def cut(v, n):
+        if v is None:
+            return None
+        s = str(v).strip()
+        return s[:n] if s else None
+
+    err.customer_name = cut(data.customer_name, 150)
+    err.imei = cut(data.imei, 100)
+    err.device_sr_no = cut(data.device_sr_no, 100)
+    err.iccid = cut(data.iccid, 100)
+    err.msisdn1 = cut(data.msisdn1, 100)
+    err.msisdn2 = cut(data.msisdn2, 100)
+    err.act_date = data.act_date
+    err.expiry_date = data.expiry_date
+    err.dispatched_date = data.dispatched_date
+    err.model = cut(data.model, 150)
+    err.sim_provider = cut(data.sim_provider, 150)
+    err.activation_plan = cut(data.activation_plan, 150)
+    err.firmware = cut(data.firmware, 150)
+    err.flash = cut(data.flash, 150)
+    err.sim_type = cut(data.sim_type, 100)
+    if data.extra is not None:
+        err.extra = data.extra
+    if data.error_reason is not None and str(data.error_reason).strip():
+        err.error_reason = str(data.error_reason).strip()[:500]
+
+    log_activity(db, "error_edit", f"Edited errored entry #{error_id} (IMEI {err.imei or '—'})", user=user)
+    db.commit()
+    db.refresh(err)
+    return {"success": True, "record": errored_out(err)}
 
 
 @router.put("/errors/{error_id}/upload", dependencies=[Depends(require_permission("upload"))])

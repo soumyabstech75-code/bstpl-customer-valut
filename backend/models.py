@@ -38,7 +38,7 @@ class Device(Base):
     imei = Column(String(20), unique=True, nullable=False, index=True)
     iccid = Column(String(30), index=True)
     msisdn1 = Column(String(20), index=True)
-    msisdn2 = Column(String(20))
+    msisdn2 = Column(String(20), index=True)
     act_date = Column(Date)
     expiry_date = Column(Date, index=True)
     dispatched_date = Column(Date)
@@ -111,4 +111,17 @@ class ErroredRecord(Base):
     extra = Column(JSON, nullable=True)
     error_reason = Column(String(500), nullable=False, default="Invalid entry")
     created_at = Column(TIMESTAMP, server_default=func.now())
+
+
+class SimpleUploadQuota(Base):
+    """Tracks the 3-use limit for Simple Upload and permanently disables it once exhausted."""
+    __tablename__ = "sim_upload_quota"
+
+    id = Column(Integer, primary_key=True)
+    uses_completed = Column(Integer, nullable=False, server_default="0", default=0)
+    active_run_id = Column(String(64), nullable=True)
+    active_run_pushed = Column(Boolean, nullable=False, server_default="0", default=False)
+    purged = Column(Boolean, nullable=False, server_default="0", default=False)
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
 

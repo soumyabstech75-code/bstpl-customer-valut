@@ -48,9 +48,10 @@ if not logger.handlers:
 logger.setLevel(logging.INFO)
 logger.propagate = False
 
-# In-memory cache for recent lookups: iccid -> {"data": ent, "ts": datetime}
+# In-memory cache for recent lookups: iccid -> {"data": ent_or_None, "ts": datetime}
 _RECENT_SYNC_CACHE: Dict[str, Dict[str, Any]] = {}
-_CACHE_TTL_SECONDS = 900  # 15 minutes
+_CACHE_TTL_SECONDS = 900  # 15 minutes for matched records
+_MISS_CACHE_TTL_SECONDS = 3600  # 60 minutes for non-Sensorise / LCM_995 misses to protect daily quota
 
 
 def _clean_iccid_term(val: Any) -> str:
@@ -120,10 +121,11 @@ def _parse_sensorise_date(raw_val: Any) -> Optional[date]:
     return None
 
 
-def fetch_sensorise_telematics_for_iccids(raw_iccids: List[str]) -> Dict[str, Dict[str, Any]]:
+def fetch_sensorise_telematics_for_iccids(raw_iccids: List[str], cache_only: bool = False) -> Dict[str, Dict[str, Any]]:
     """
     Queries the Sensorise Company Server (checkSIMBulk/v2) for the given ICCID values.
-    Returns a dictionary mapping both raw and numeric ICCID -> telematics entity.
+    When `cache_only=True`, resolves only from RAM cache, telematics_cache.json, and sensorise_sims_basic
+    so routine unfiltered table pagination does not exhaust the daily API call quota.
     """
     if not raw_iccids or not sensorise_client:
         return {}
@@ -132,6 +134,14 @@ def fetch_sensorise_telematics_for_iccids(raw_iccids: List[str]) -> Dict[str, Di
     telematics_results: Dict[str, Dict[str, Any]] = {}
     iccids_to_query: Set[str] = set()
     numeric_to_raw: Dict[str, List[str]] = {}
+
+    # Index raw_telematics_cache by 19-digit prefix as fallback when DB holds 19-digit ICCIDs without check digit
+    raw_cache = getattr(sensorise_client, "raw_telematics_cache", {}) or {}
+    cache_p19 = {}
+    for ck, cv in raw_cache.items():
+        num_ck = _extract_numeric_iccid(ck)
+        if len(num_ck) >= 19 and num_ck[:19] not in cache_p19:
+            cache_p19[num_ck[:19]] = cv
 
     for raw in raw_iccids:
         raw_clean = _clean_iccid_term(raw)
@@ -142,20 +152,34 @@ def fetch_sensorise_telematics_for_iccids(raw_iccids: List[str]) -> Dict[str, Di
         if num_iccid and 16 <= len(num_iccid) <= 24:
             numeric_to_raw.setdefault(num_iccid, []).append(raw_clean)
 
-            # Check in-memory cache first
+            # Check in-memory cache first (both positive hits and negative LCM_995 misses)
             cached = _RECENT_SYNC_CACHE.get(num_iccid)
-            if cached and (now - cached["ts"]).total_seconds() < _CACHE_TTL_SECONDS:
-                telematics_results[num_iccid] = cached["data"]
-                telematics_results[raw_clean] = cached["data"]
-            elif num_iccid in getattr(sensorise_client, "raw_telematics_cache", {}):
-                cached_data = sensorise_client.raw_telematics_cache[num_iccid]
-                telematics_results[num_iccid] = cached_data
-                telematics_results[raw_clean] = cached_data
+            if cached:
+                age = (now - cached["ts"]).total_seconds()
+                if cached["data"] is not None and age < _CACHE_TTL_SECONDS:
+                    ent = dict(cached["data"])
+                    ent.setdefault("_from_sensorise_server", True)
+                    telematics_results[num_iccid] = ent
+                    telematics_results[raw_clean] = ent
+                    continue
+                elif cached["data"] is None and age < _MISS_CACHE_TTL_SECONDS:
+                    continue
+            if num_iccid in raw_cache:
+                ent = dict(raw_cache[num_iccid])
+                ent["_from_sensorise_server"] = True
+                telematics_results[num_iccid] = ent
+                telematics_results[raw_clean] = ent
+            elif len(num_iccid) == 19 and num_iccid in cache_p19:
+                ent = dict(cache_p19[num_iccid])
+                ent["_from_sensorise_server"] = True
+                telematics_results[num_iccid] = ent
+                telematics_results[raw_clean] = ent
             else:
                 iccids_to_query.add(num_iccid)
 
-    # Query Sensorise Server in chunks of 50
-    if iccids_to_query:
+    # Query Sensorise Server in chunks of 50 (skipped during cache-only pagination)
+    live_entities_to_cache: List[Dict[str, Any]] = []
+    if iccids_to_query and not cache_only:
         query_list = list(iccids_to_query)
         chunk_size = 50
         for i in range(0, len(query_list), chunk_size):
@@ -163,18 +187,32 @@ def fetch_sensorise_telematics_for_iccids(raw_iccids: List[str]) -> Dict[str, Di
             try:
                 bulk_res = sensorise_client.check_sim_bulk_v2(chunk)
                 entities = bulk_res.get("simDetailEntity") or bulk_res.get("sim_entity") or []
+                api_code_res = str(bulk_res.get("apiResponseCode") or "").strip()
+                matched_chunk_iccids = set()
                 for ent in entities:
                     if isinstance(ent, dict):
                         ent["_from_sensorise_server"] = True
+                        live_entities_to_cache.append(ent)
                         ent_iccid = _extract_numeric_iccid(ent.get("iccid"))
                         if ent_iccid:
+                            matched_chunk_iccids.add(ent_iccid)
                             telematics_results[ent_iccid] = ent
                             _RECENT_SYNC_CACHE[ent_iccid] = {"data": ent, "ts": now}
                             # Map to all raw ICCID representations
                             for raw_repr in numeric_to_raw.get(ent_iccid, []):
                                 telematics_results[raw_repr] = ent
+                if api_code_res in ("LCM_818", "LCM_819"):
+                    break
+                # Cache unmatched ICCIDs (e.g. LCM_995 "No records found") so non-Sensorise ICCIDs don't re-burn daily quota
+                if api_code_res in ("LCM_995", "LCM_001", "200", ""):
+                    for q_ic in chunk:
+                        if q_ic not in matched_chunk_iccids:
+                            _RECENT_SYNC_CACHE[q_ic] = {"data": None, "ts": now}
             except Exception as e:
                 logger.warning(f"Sensorise checkSIMBulk query error: {e}")
+
+    if live_entities_to_cache:
+        _persist_live_entities_to_basic_table(live_entities_to_cache)
 
     # Fallback to local telematics cache or database table sensorise_sims_basic if server had no record
     for raw in raw_iccids:
@@ -193,7 +231,10 @@ def fetch_sensorise_telematics_for_iccids(raw_iccids: List[str]) -> Dict[str, Di
     if missing_for_db:
         try:
             from sqlalchemy import text
-            from database import engine
+            try:
+                from database import engine
+            except ImportError:
+                from backend.database import engine
             terms_set = set()
             for raw in missing_for_db:
                 clean_raw = _clean_iccid_term(raw)
@@ -209,9 +250,16 @@ def fetch_sensorise_telematics_for_iccids(raw_iccids: List[str]) -> Dict[str, Di
                     chunk_sz = 300
                     for c_idx in range(0, len(terms_list), chunk_sz):
                         chunk = terms_list[c_idx:c_idx + chunk_sz]
+                        p19_list = [t[:19] for t in chunk if len(t) >= 19]
                         params = {f"ic_{k}": val for k, val in enumerate(chunk)}
                         in_clause = ",".join(f":ic_{k}" for k in range(len(chunk)))
-                        sql = text(f"SELECT iccid, msisdn1, msisdn2, activation_date, expiry_date FROM sensorise_sims_basic WHERE iccid IN ({in_clause})")
+                        if p19_list:
+                            for pk, pv in enumerate(p19_list):
+                                params[f"p19_{pk}"] = pv
+                            p19_clause = ",".join(f":p19_{pk}" for pk in range(len(p19_list)))
+                            sql = text(f"SELECT iccid, msisdn1, msisdn2, activation_date, expiry_date FROM sensorise_sims_basic WHERE iccid IN ({in_clause}) OR LEFT(iccid, 19) IN ({p19_clause})")
+                        else:
+                            sql = text(f"SELECT iccid, msisdn1, msisdn2, activation_date, expiry_date FROM sensorise_sims_basic WHERE iccid IN ({in_clause})")
                         rows = conn.execute(sql, params).fetchall()
                         for row in rows:
                             if row and (row[1] or row[2] or row[3] or row[4]):
@@ -227,6 +275,8 @@ def fetch_sensorise_telematics_for_iccids(raw_iccids: List[str]) -> Dict[str, Di
                                 num_ic = _extract_numeric_iccid(db_ic)
                                 if num_ic:
                                     telematics_results[num_ic] = ent
+                                    if len(num_ic) >= 19:
+                                        telematics_results.setdefault(num_ic[:19], ent)
         except Exception as batch_err:
             logger.debug(f"sensorise_sims_basic batch query notice: {batch_err}")
 
@@ -281,6 +331,63 @@ def _extract_active_sensorise_msisdns(ent: Optional[Dict[str, Any]]) -> Tuple[st
     return m1, m2
 
 
+def _extract_sensorise_dates(ent: Optional[Dict[str, Any]]) -> Tuple[Optional[date], Optional[date]]:
+    """Extracts activation and expiry dates checking all Sensorise fallback keys."""
+    if not ent or not isinstance(ent, dict):
+        return None, None
+    raw_ad = (
+        ent.get("commercialActivationDate")
+        or ent.get("activationDate")
+        or ent.get("activation_date")
+        or ent.get("dualProfileActivationDate")
+        or ent.get("activateOn")
+    )
+    raw_ed = (
+        ent.get("commercialExpiryDate")
+        or ent.get("expiryDate")
+        or ent.get("expiry_date")
+        or ent.get("dualProfileExpiryDate")
+        or ent.get("validTill")
+        or ent.get("validTillDate")
+    )
+    return _parse_sensorise_date(raw_ad), _parse_sensorise_date(raw_ed)
+
+
+def _persist_live_entities_to_basic_table(entities: List[Dict[str, Any]]) -> None:
+    """Upserts freshly fetched live Sensorise entities into sensorise_sims_basic offline cache."""
+    if not entities:
+        return
+    try:
+        try:
+            from database import engine
+        except ImportError:
+            from backend.database import engine
+        with engine.begin() as conn:
+            for ent in entities:
+                ic = _extract_numeric_iccid(ent.get("iccid"))
+                if not ic:
+                    continue
+                m1, m2 = _extract_active_sensorise_msisdns(ent)
+                ad_d, ed_d = _extract_sensorise_dates(ent)
+                ad_s = ad_d.strftime("%d-%m-%Y") if ad_d else ""
+                ed_s = ed_d.strftime("%d-%m-%Y") if ed_d else ""
+                upd = conn.execute(text("""
+                    UPDATE sensorise_sims_basic
+                    SET msisdn1 = COALESCE(NULLIF(:m1, ''), msisdn1),
+                        msisdn2 = COALESCE(NULLIF(:m2, ''), msisdn2),
+                        activation_date = COALESCE(NULLIF(:ad, ''), activation_date),
+                        expiry_date = COALESCE(NULLIF(:ed, ''), expiry_date)
+                    WHERE iccid = :ic OR iccid = :ic_f
+                """), {"m1": m1, "m2": m2, "ad": ad_s, "ed": ed_s, "ic": ic, "ic_f": ic + "F"})
+                if (upd.rowcount or 0) == 0:
+                    conn.execute(text("""
+                        INSERT INTO sensorise_sims_basic (device_sr_no, imei, iccid, msisdn1, msisdn2, activation_date, expiry_date)
+                        VALUES ('', '', :ic, :m1, :m2, :ad, :ed)
+                    """), {"ic": ic, "m1": m1, "m2": m2, "ad": ad_s, "ed": ed_s})
+    except Exception as basic_err:
+        logger.debug(f"sensorise_sims_basic upsert notice: {basic_err}")
+
+
 def _clean_str(val: Any) -> str:
     """Cleans a string and returns empty string if missing, none, or placeholder."""
     if val is None:
@@ -330,7 +437,7 @@ def _get_stored_db_telematics(db: Session, iccid: str) -> Dict[str, Any]:
     return res
 
 
-def sync_devices_with_sensorise(db: Session, devices: List[Any]) -> List[Any]:
+def sync_devices_with_sensorise(db: Session, devices: List[Any], cache_only: bool = False) -> List[Any]:
     """
     Given a list of Device ORM models:
     1. Extracts their ICCID values ('ICCID / CCID Dispatched').
@@ -377,8 +484,8 @@ def sync_devices_with_sensorise(db: Session, devices: List[Any]) -> List[Any]:
                 dev.data_source = "website_database"
         return devices
 
-    # 2. Fetch from Sensorise server
-    telematics_map = fetch_sensorise_telematics_for_iccids(raw_iccids)
+    # 2. Fetch from Sensorise server (or cache/DB when cache_only=True)
+    telematics_map = fetch_sensorise_telematics_for_iccids(raw_iccids, cache_only=cache_only)
     if not telematics_map:
         for dev in devices:
             if not hasattr(dev, "source") or not dev.source:
@@ -397,11 +504,7 @@ def sync_devices_with_sensorise(db: Session, devices: List[Any]) -> List[Any]:
         is_from_server = bool(ent and ent.get("_from_sensorise_server"))
 
         web_m1, web_m2 = _extract_active_sensorise_msisdns(ent)
-        raw_ad = (ent.get("commercialActivationDate") or ent.get("activationDate") or ent.get("activation_date")) if ent else None
-        raw_ed = (ent.get("commercialExpiryDate") or ent.get("expiryDate") or ent.get("expiry_date")) if ent else None
-
-        web_ad = _parse_sensorise_date(raw_ad)
-        web_ed = _parse_sensorise_date(raw_ed)
+        web_ad, web_ed = _extract_sensorise_dates(ent)
 
         has_server_telematics = bool(is_from_server and (web_m1 or web_m2 or web_ad or web_ed))
 
@@ -522,7 +625,12 @@ def sync_devices_with_sensorise(db: Session, devices: List[Any]) -> List[Any]:
                     cur_extra = {}
                 cur_extra["_sensorise_diff"] = diff
                 cur_extra["_sensorise_diff_at"] = datetime.now().isoformat()
-                dev.extra = cur_extra
+                dev.extra = dict(cur_extra)
+                try:
+                    from sqlalchemy.orm.attributes import flag_modified
+                    flag_modified(dev, "extra")
+                except Exception:
+                    pass
                 try:
                     serialized_extra = json.dumps(cur_extra)
                 except Exception:
@@ -540,7 +648,8 @@ def sync_devices_with_sensorise(db: Session, devices: List[Any]) -> List[Any]:
                     "id": dev.id
                 })
                 if customer_tables and getattr(dev, "customer_id", None):
-                    t_name = customer_tables.find_table(db, dev.customer_id)
+                    c_name = (dev.customer.name if getattr(dev, "customer", None) else "") or ""
+                    t_name = customer_tables.find_table(db, dev.customer_id, c_name)
                     if t_name:
                         cust_updates.setdefault(t_name, []).append({
                             "m1": dev.msisdn1,
@@ -652,11 +761,7 @@ def sync_device_dicts_with_sensorise(db: Session, records: List[Dict[str, Any]])
         is_from_server = bool(ent and ent.get("_from_sensorise_server"))
 
         web_m1, web_m2 = _extract_active_sensorise_msisdns(ent)
-        raw_ad = (ent.get("commercialActivationDate") or ent.get("activationDate") or ent.get("activation_date")) if ent else None
-        raw_ed = (ent.get("commercialExpiryDate") or ent.get("expiryDate") or ent.get("expiry_date")) if ent else None
-
-        ad_date = _parse_sensorise_date(raw_ad)
-        ed_date = _parse_sensorise_date(raw_ed)
+        ad_date, ed_date = _extract_sensorise_dates(ent)
 
         has_server_telematics = bool(is_from_server and (web_m1 or web_m2 or ad_date or ed_date))
 
@@ -795,7 +900,9 @@ def sync_device_dicts_with_sensorise(db: Session, records: List[Dict[str, Any]])
                 changed = True
 
             if final_ed_date:
-                r["days_left"] = (final_ed_date - date.today()).days
+                dl = (final_ed_date - date.today()).days
+                r["days_left"] = dl
+                r["expiry_status"] = "Expired" if dl < 0 else ("Expiring Soon" if dl <= 30 else "Active")
             else:
                 r["days_left"] = ""
                 r["expiry_status"] = ""
@@ -825,7 +932,8 @@ def sync_device_dicts_with_sensorise(db: Session, records: List[Dict[str, Any]])
 
                 cid = r.get("customer_id")
                 if customer_tables and cid and imei:
-                    t_name = customer_tables.find_table(db, cid)
+                    c_name = r.get("customer_name") or ""
+                    t_name = customer_tables.find_table(db, cid, c_name)
                     if t_name:
                         cust_updates.setdefault(t_name, []).append({
                             "m1": m1_to_save, "m2": m2_to_save,

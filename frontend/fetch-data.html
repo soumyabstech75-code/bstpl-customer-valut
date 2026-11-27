@@ -646,22 +646,23 @@
     }
 
     select,
-    input[type="text"],
-    input[type="password"],
-    input[type="search"],
+    input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]):not([type="range"]):not([type="color"]):not([type="button"]):not([type="submit"]):not([type="reset"]),
     textarea {
-      height: 38px;
-      padding: 0 12px;
+      height: 40px;
+      padding: 0 13px;
       border-radius: 10px;
       border: 1.5px solid var(--line);
       background: var(--card);
       color: var(--text);
       font-family: inherit;
       font-weight: 600;
-      font-size: 13px;
+      font-size: 13.5px;
+      box-sizing: border-box;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
       outline: none;
-      transition: border-color 0.15s;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
+    input::placeholder, textarea::placeholder { color: var(--muted); opacity: 0.72; font-weight: 500; }
 
     textarea {
       height: auto;
@@ -3896,7 +3897,7 @@
           }
           if (ex && typeof ex === 'object') {
             Object.keys(ex).forEach(k => {
-              if (k && !uColsMap.has(k)) uColsMap.set(k, k.replace(/_/g, ' ').toUpperCase());
+              if (k && !k.startsWith('_') && !uColsMap.has(k)) uColsMap.set(k, k.replace(/_/g, ' ').toUpperCase());
             });
           }
         });
@@ -5854,17 +5855,19 @@
     async function fetchBulkChunked(terms, field, custId, includeSimilar, signal, onProgress) {
       const BATCH = 3000;
       const exact = [], similar = [], exactIds = new Set(), simIds = new Set();
+      let sensoriseQuotaReached = false;
       for (let i = 0; i < terms.length; i += BATCH) {
         const part = terms.slice(i, i + BATCH);
         const res = await api('/api/fetch/bulk', {
           method: 'POST', signal,
           body: JSON.stringify({ queries: part, field, customer_id: custId, sim_type: activeFetchSimType, include_similar: !!includeSimilar })
         });
+        if (res?.sensorise_status?.daily_quota_reached) sensoriseQuotaReached = true;
         (res.exact_matches || []).forEach(d => { if (!exactIds.has(d.id)) { exactIds.add(d.id); exact.push(d); } });
         (res.similar_matches || []).forEach(d => { if (!simIds.has(d.id)) { simIds.add(d.id); similar.push(d); } });
         if (onProgress) onProgress(Math.min(i + BATCH, terms.length), terms.length);
       }
-      return { exact, similar: similar.filter(d => !exactIds.has(d.id)) };
+      return { exact, similar: similar.filter(d => !exactIds.has(d.id)), sensoriseQuotaReached };
     }
 
     /* =========================================================================
@@ -5942,7 +5945,8 @@
           const pg = Math.min(Math.max(1, page), pages);
           nfState = {
             ...nfState, mode: 'local', items: r.exact, total: r.exact.length, page: pg, query: qry,
-            notFound: qry.terms.filter(t => !match(t)), hasRun: true
+            notFound: qry.terms.filter(t => !match(t)), hasRun: true,
+            sensoriseQuotaReached: !!r.sensoriseQuotaReached
           };
           nfCurrentList = r.exact.slice((pg - 1) * ps, pg * ps);
         } else {
@@ -5954,7 +5958,8 @@
           }
           nfState = {
             ...nfState, mode: 'server', items: res.items || [], total: res.total || 0, page: res.page || page,
-            query: qry, notFound: [], hasRun: true
+            query: qry, notFound: [], hasRun: true,
+            sensoriseQuotaReached: Boolean(res?.sensorise_status?.daily_quota_reached)
           };
           nfCurrentList = nfState.items;
         }
@@ -6174,7 +6179,12 @@
             </div>
           </div>` : '';
 
+      const sensoriseNotice = nfState.sensoriseQuotaReached
+        ? `<div style="margin:0 0 12px;padding:10px 14px;border-radius:10px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.35);color:#b45309;font-size:12px;font-weight:600">⚠️ Live Sensorise API daily limit reached (LCM_818: Maximum 100 calls/day on SENSE1019). Serving cached Sensorise &amp; database values until daily reset.</div>`
+        : '';
+
       wrap.innerHTML = `
+    ${sensoriseNotice}
     <div class="row" style="align-items:center;justify-content:space-between;margin:14px 0 10px;flex-wrap:wrap;gap:10px">
       <div>${summary}${q.note ? `<div class="sub" style="font-size:12px;margin-top:4px;color:var(--warn)">${esc(q.note)}</div>` : ''}</div>
       <div style="flex:1;max-width:300px;min-width:200px">
@@ -6683,7 +6693,7 @@
           notFound.push(...noExact);
         }
 
-        bfLastResult = { exact: r.exact, similar: r.similar, exactTerms, partialTerms, notFound, searched: terms.length, field, includeSimilar };
+        bfLastResult = { exact: r.exact, similar: r.similar, exactTerms, partialTerms, notFound, searched: terms.length, field, includeSimilar, sensoriseQuotaReached: !!r.sensoriseQuotaReached };
         renderBulkFetchOutcome(bfLastResult);
       } catch (err) {
         if (err && err.name === 'AbortError') return;
@@ -6709,7 +6719,12 @@
       const capNote = n => n > CAP ? `<div class="sub" style="font-size:12px;margin:0 0 8px">Showing the first ${CAP} of ${n.toLocaleString()} rows. The Excel download contains all of them.</div>` : '';
       const noExactCount = partialTerms.length + notFound.length;
 
+      const sensoriseNotice = res.sensoriseQuotaReached
+        ? `<div style="margin:12px 0;padding:10px 14px;border-radius:10px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.35);color:#b45309;font-size:12px;font-weight:600">⚠️ Live Sensorise API daily limit reached (LCM_818: Maximum 100 calls/day on SENSE1019). Serving cached Sensorise &amp; database values until daily reset.</div>`
+        : '';
+
       wrap.innerHTML = `
+    ${sensoriseNotice}
     <div class="card" style="padding:16px;border:1px solid var(--line);border-radius:12px;margin:16px 0;background:var(--card-subtle)">
       <div class="row" style="align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin:0">
         <div>

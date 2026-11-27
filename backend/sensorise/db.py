@@ -222,7 +222,11 @@ def get_connection() -> Optional[pymysql.Connection]:
         "connect_timeout": 10
     }
     if "tidbcloud.com" in str(DB_HOST).lower():
-        conn_kwargs["ssl"] = {"ca": None}
+        try:
+            import certifi
+            conn_kwargs["ssl"] = {"ca": certifi.where()}
+        except ImportError:
+            conn_kwargs["ssl"] = {"ca": None}
 
     return pymysql.connect(**conn_kwargs)
 
@@ -264,11 +268,32 @@ def test_db_status() -> Dict[str, Any]:
             "message": f"Failed to connect to MySQL: {str(e)}"
         }
 
+_token_table_ready = False
+
+_SENSORISE_TOKEN_STORE_DDL = """
+    CREATE TABLE IF NOT EXISTS sensorise_token_store (
+        id INT PRIMARY KEY,
+        auth_token TEXT NOT NULL,
+        token_expiry VARCHAR(50),
+        access_key TEXT,
+        calls_remaining INT DEFAULT 100,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+"""
+
+
+def _ensure_token_store_table(cursor) -> None:
+    global _token_table_ready
+    cursor.execute(_SENSORISE_TOKEN_STORE_DDL)
+    _token_table_ready = True
+
+
 def init_db() -> Dict[str, Any]:
     """Initializes the required database tables if MySQL is configured."""
     if not is_db_configured():
         return {"status": "skipped", "message": "Database not configured yet."}
     
+    conn = None
     try:
         conn = get_connection()
         if not conn:
@@ -285,71 +310,102 @@ def init_db() -> Dict[str, Any]:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """)
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS sensorise_token_store (
-                    id INT PRIMARY KEY,
-                    auth_token TEXT NOT NULL,
-                    token_expiry VARCHAR(50),
-                    access_key TEXT,
-                    calls_remaining INT DEFAULT 100,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-            """)
+            _ensure_token_store_table(cursor)
             conn.commit()
         
-        conn.close()
         return {"status": "success", "message": "Database initialized."}
     except Exception as e:
         logger.error(f"Error initializing database: {e}")
         return {"status": "error", "error": str(e)}
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
 
 def save_token_to_db(token: str, expiry: str = "", access_key: str = "", calls_remaining: int = 100) -> bool:
     """Persists active Sensorise API token into TiDB Cloud for seamless cross-deployment lifetime."""
+    global _token_table_ready
     if not token or not is_db_configured():
         return False
+    conn = None
     try:
         conn = get_connection()
         if not conn:
             return False
-        with conn.cursor() as cursor:
-            cursor.execute("""
-                INSERT INTO sensorise_token_store (id, auth_token, token_expiry, access_key, calls_remaining)
-                VALUES (1, %s, %s, %s, %s)
-                ON DUPLICATE KEY UPDATE
-                    auth_token = VALUES(auth_token),
-                    token_expiry = VALUES(token_expiry),
-                    access_key = VALUES(access_key),
-                    calls_remaining = VALUES(calls_remaining),
-                    updated_at = CURRENT_TIMESTAMP;
-            """, (token, expiry, access_key, calls_remaining))
-            conn.commit()
-        conn.close()
-        return True
+        for attempt in range(2):
+            try:
+                with conn.cursor() as cursor:
+                    if not _token_table_ready:
+                        _ensure_token_store_table(cursor)
+                    cursor.execute("""
+                        INSERT INTO sensorise_token_store (id, auth_token, token_expiry, access_key, calls_remaining)
+                        VALUES (1, %s, %s, %s, %s)
+                        ON DUPLICATE KEY UPDATE
+                            auth_token = VALUES(auth_token),
+                            token_expiry = VALUES(token_expiry),
+                            access_key = VALUES(access_key),
+                            calls_remaining = VALUES(calls_remaining),
+                            updated_at = CURRENT_TIMESTAMP;
+                    """, (token, expiry, access_key, calls_remaining))
+                    conn.commit()
+                return True
+            except Exception as inner_err:
+                if "1146" in str(inner_err) and "doesn't exist" in str(inner_err) and attempt == 0:
+                    _token_table_ready = False
+                    continue
+                raise
     except Exception as e:
         logger.warning(f"Could not persist Sensorise token to TiDB: {e}")
         return False
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
 
 def get_token_from_db() -> Dict[str, Any]:
     """Retrieves active Sensorise API token from TiDB Cloud."""
+    global _token_table_ready
     if not is_db_configured():
         return {}
+    conn = None
     try:
         conn = get_connection()
         if not conn:
             return {}
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT auth_token, token_expiry, access_key, calls_remaining FROM sensorise_token_store WHERE id = 1 LIMIT 1;")
-            row = cursor.fetchone()
-        conn.close()
-        if row:
-            return {
-                "auth_token": row.get("auth_token") or "",
-                "token_expiry": row.get("token_expiry") or "",
-                "access_key": row.get("access_key") or "",
-                "calls_remaining": row.get("calls_remaining") or 100
-            }
+        for attempt in range(2):
+            try:
+                with conn.cursor() as cursor:
+                    if not _token_table_ready:
+                        _ensure_token_store_table(cursor)
+                    cursor.execute("SELECT auth_token, token_expiry, access_key, calls_remaining FROM sensorise_token_store WHERE id = 1 LIMIT 1;")
+                    row = cursor.fetchone()
+                if row:
+                    return {
+                        "auth_token": row.get("auth_token") or "",
+                        "token_expiry": row.get("token_expiry") or "",
+                        "access_key": row.get("access_key") or "",
+                        "calls_remaining": row.get("calls_remaining") or 100
+                    }
+                return {}
+            except Exception as inner_err:
+                if "1146" in str(inner_err) and "doesn't exist" in str(inner_err) and attempt == 0:
+                    _token_table_ready = False
+                    continue
+                raise
     except Exception as e:
         logger.debug(f"Could not read Sensorise token from TiDB: {e}")
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
     return {}
 
 def create_table_from_file_data(filename: str, headers: List[str], rows: List[List[Any]]) -> Dict[str, Any]:
@@ -486,6 +542,31 @@ def ensure_sensorise_basic_table() -> Dict[str, Any]:
                 rows.append(["", "", iccid, m1, m2, act, exp])
 
         res = create_table_from_file_data(table_name, headers, rows)
+        if not res.get("success") and not rows:
+            c2 = get_connection()
+            if c2:
+                try:
+                    with c2.cursor() as cur:
+                        cur.execute("""
+                            CREATE TABLE IF NOT EXISTS `sensorise_sims_basic` (
+                                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                                `device_sr_no` VARCHAR(255) NULL,
+                                `imei` VARCHAR(255) NULL,
+                                `iccid` VARCHAR(255) NULL,
+                                `msisdn1` VARCHAR(255) NULL,
+                                `msisdn2` VARCHAR(255) NULL,
+                                `activation_date` VARCHAR(255) NULL,
+                                `expiry_date` VARCHAR(255) NULL,
+                                `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                INDEX `idx_sensorise_sims_basic_iccid` (`iccid`),
+                                INDEX `idx_sensorise_sims_basic_imei` (`imei`),
+                                INDEX `idx_sensorise_sims_basic_device_sr_no` (`device_sr_no`)
+                            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                        """)
+                        c2.commit()
+                    return {"success": True, "table_name": table_name, "row_count": 0, "source": "mysql"}
+                finally:
+                    c2.close()
         logger.info(f"Initialized table '{table_name}' in database: {len(rows)} entries.")
         return res
     except Exception as e:
@@ -1346,24 +1427,52 @@ def get_sensorise_summary_stats() -> Dict[str, Any]:
             return {"configured": True, "connected": False, "total_sims": 0, "active_sims": 0, "expired_sims": 0}
 
         with conn.cursor() as cursor:
-            cursor.execute("""
-                SELECT 
-                    COUNT(*) AS total_sims,
-                    SUM(CASE WHEN (activation_date IS NOT NULL AND activation_date != '') THEN 1 ELSE 0 END) AS active_sims,
-                    SUM(CASE WHEN (expiry_date IS NOT NULL AND expiry_date != '') THEN 1 ELSE 0 END) AS expired_sims
-                FROM sensorise_sims_basic;
-            """)
-            stats = cursor.fetchone() or {}
+            cursor.execute("SELECT activation_date, expiry_date, created_at FROM sensorise_sims_basic;")
+            all_rows = cursor.fetchall() or []
 
         conn.close()
+        total_sims = len(all_rows)
+        active_sims = 0
+        expired_sims = 0
+        other_sims = 0
+        last_synced = ""
+        today_d = datetime.date.today()
+
+        for row in all_rows:
+            exp_raw = clean_field_val(row.get("expiry_date"))
+            act_raw = clean_field_val(row.get("activation_date"))
+            created_raw = row.get("created_at")
+            if created_raw:
+                c_str = str(created_raw)
+                if c_str > last_synced:
+                    last_synced = c_str
+            exp_dmy = format_to_dmy(exp_raw) if exp_raw else ""
+            parsed_exp = None
+            if exp_dmy:
+                m_dmy = re.match(r"^(\d{2})-(\d{2})-(\d{4})$", exp_dmy)
+                if m_dmy:
+                    try:
+                        parsed_exp = datetime.date(int(m_dmy.group(3)), int(m_dmy.group(2)), int(m_dmy.group(1)))
+                    except ValueError:
+                        parsed_exp = None
+            if parsed_exp is not None:
+                if parsed_exp < today_d:
+                    expired_sims += 1
+                else:
+                    active_sims += 1
+            elif act_raw:
+                active_sims += 1
+            else:
+                other_sims += 1
+
         return {
             "configured": True,
             "connected": True,
-            "total_sims": int(stats.get("total_sims") or 0),
-            "active_sims": int(stats.get("active_sims") or 0),
-            "expired_sims": int(stats.get("expired_sims") or 0),
-            "other_sims": 0,
-            "last_synced": ""
+            "total_sims": total_sims,
+            "active_sims": active_sims,
+            "expired_sims": expired_sims,
+            "other_sims": other_sims,
+            "last_synced": last_synced
         }
     except Exception as e:
         logger.error(f"Error getting sensorise stats: {e}")

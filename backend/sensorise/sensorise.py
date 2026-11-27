@@ -154,11 +154,32 @@ class SensoriseClient:
         self.auto_token_enabled: bool = True
         self._load_cache_from_json()
 
+    @staticmethod
+    def _ist_now() -> datetime.datetime:
+        """Returns current naive datetime in IST (UTC+05:30) matching Sensorise server tokenExpiry."""
+        ist = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+        return datetime.datetime.now(ist).replace(tzinfo=None)
+
+    def _parse_expiry_dt(self, expiry_str: Optional[str]) -> Optional[datetime.datetime]:
+        if not expiry_str:
+            return None
+        s = str(expiry_str).strip()
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%d-%m-%Y %H:%M:%S"):
+            try:
+                return datetime.datetime.strptime(s, fmt)
+            except Exception:
+                pass
+        return None
+
     def get_token_expiry(self) -> str:
-        """Always reads the current token expiry directly from .env to guarantee exact match."""
+        """Reads current token & expiry from .env and TiDB sensorise_token_store, keeping the newest valid one."""
         sensorise_dir = os.path.dirname(os.path.abspath(__file__))
         backend_dir = os.path.abspath(os.path.join(sensorise_dir, ".."))
         project_root = os.path.abspath(os.path.join(backend_dir, ".."))
+        best_tok = self.auth_token or ""
+        best_exp = self.token_expiry or ""
+        best_dt = self._parse_expiry_dt(best_exp)
+
         for env_path in [
             os.path.join(sensorise_dir, ".env"),
             os.path.join(backend_dir, ".env"),
@@ -166,23 +187,52 @@ class SensoriseClient:
         ]:
             if os.path.exists(env_path):
                 try:
+                    env_tok = ""
+                    env_exp = ""
                     with open(env_path, "r", encoding="utf-8") as f:
                         for line in f:
-                            if line.strip().startswith("SENSORISE_TOKEN_EXPIRY="):
-                                val = line.strip().split("=", 1)[1].strip()
-                                if val:
-                                    self.token_expiry = val
-                                    os.environ["SENSORISE_TOKEN_EXPIRY"] = val
-                            if line.strip().startswith("SENSORISE_AUTH_TOKEN="):
-                                tok_val = line.strip().split("=", 1)[1].strip()
-                                if tok_val:
-                                    self.auth_token = tok_val
-                                    self.api_key = tok_val
-                                    os.environ["SENSORISE_AUTH_TOKEN"] = tok_val
-                        if self.token_expiry:
-                            return self.token_expiry
+                            st = line.strip()
+                            if st.startswith("SENSORISE_TOKEN_EXPIRY="):
+                                env_exp = st.split("=", 1)[1].strip()
+                            elif st.startswith("SENSORISE_AUTH_TOKEN="):
+                                env_tok = st.split("=", 1)[1].strip()
+                    env_dt = self._parse_expiry_dt(env_exp)
+                    if env_exp and (best_dt is None or (env_dt is not None and env_dt > best_dt)):
+                        best_exp = env_exp
+                        best_dt = env_dt
+                        if env_tok:
+                            best_tok = env_tok
                 except Exception:
                     pass
+
+        # If missing or expired in .env/memory, check shared TiDB sensorise_token_store
+        now_ist = self._ist_now()
+        if best_dt is None or now_ist >= (best_dt - datetime.timedelta(minutes=5)):
+            try:
+                try:
+                    from db import get_token_from_db
+                except ImportError:
+                    from backend.sensorise.db import get_token_from_db
+                t_row = get_token_from_db()
+                db_exp = (t_row or {}).get("token_expiry") or ""
+                db_tok = (t_row or {}).get("auth_token") or ""
+                db_dt = self._parse_expiry_dt(db_exp)
+                if db_tok and db_dt and (best_dt is None or db_dt > best_dt):
+                    best_tok = db_tok
+                    best_exp = db_exp
+                    best_dt = db_dt
+            except Exception:
+                pass
+
+        if best_tok:
+            self.auth_token = best_tok
+            self.api_key = best_tok
+            os.environ["SENSORISE_AUTH_TOKEN"] = best_tok
+        if best_exp:
+            self.token_expiry = best_exp
+            os.environ["SENSORISE_TOKEN_EXPIRY"] = best_exp
+            return self.token_expiry
+
         exp = os.environ.get("SENSORISE_TOKEN_EXPIRY")
         if exp and exp.strip():
             self.token_expiry = exp.strip()
@@ -190,6 +240,7 @@ class SensoriseClient:
         return self.token_expiry or ""
 
     def is_token_valid(self) -> bool:
+        self.get_token_expiry()
         if not self.auth_token:
             return False
 
@@ -199,14 +250,16 @@ class SensoriseClient:
                 return False
 
         if self.token_expiry:
-            try:
-                exp_dt = datetime.datetime.strptime(str(self.token_expiry).strip(), "%Y-%m-%d %H:%M:%S")
-                if datetime.datetime.now() >= (exp_dt - datetime.timedelta(minutes=5)):
+            exp_dt = self._parse_expiry_dt(self.token_expiry)
+            if exp_dt is not None:
+                if self._ist_now() >= (exp_dt - datetime.timedelta(minutes=5)):
                     logger.info(f"Token near or past expiration ({self.token_expiry}). Auto-generation triggered.")
                     return False
-            except Exception:
-                pass
         return True
+
+    def is_daily_quota_active(self) -> bool:
+        q_until = getattr(self, "_daily_quota_until", None)
+        return bool(q_until and datetime.datetime.now() < q_until)
 
     @staticmethod
     def is_daily_quota_reached(api_code: Any, api_msg: Any = "") -> bool:
@@ -830,8 +883,10 @@ class SensoriseClient:
                     "message": f"Connected and authorized on Sensorise SenseLCM server successfully ({api_code}: {api_msg})."
                 }
             elif api_code in ("LCM_818", "LCM_819"):
+                self._daily_quota_until = datetime.datetime.now() + datetime.timedelta(minutes=30)
                 return {
                     "connected": True,
+                    "daily_quota_reached": True,
                     "server_url": self.base_url,
                     "mode": "live",
                     "status_code": status_code,
@@ -839,7 +894,7 @@ class SensoriseClient:
                     "has_credentials": True,
                     "authenticated": True,
                     "token_expiry": self.get_token_expiry(),
-                    "message": f"Connected to Sensorise SenseLCM server (Active - {api_msg})."
+                    "message": f"Connected to Sensorise SenseLCM server, but live queries are paused ({api_code}: {api_msg}). Cached/database records remain available."
                 }
             elif api_code == "LCM_804":
                 return {
@@ -975,12 +1030,13 @@ class SensoriseClient:
             expiry = res_data.get("tokenExpiry")
             if token:
                 if not expiry:
-                    expiry = (datetime.datetime.now() + datetime.timedelta(hours=token_validity)).strftime("%Y-%m-%d %H:%M:%S")
+                    expiry = (self._ist_now() + datetime.timedelta(hours=token_validity)).strftime("%Y-%m-%d %H:%M:%S")
                 self.auth_token = token
                 self.api_key = token
                 self.token_expiry = expiry
                 self.token_transactions_remaining = token_transactions
                 self.token_generated_at = datetime.datetime.now()
+                self._daily_quota_until = None
                 self.save_token_to_env(token, expiry=expiry)
                 logger.info(f"Successfully generated and saved SenseLCM API Token in file: {token[:12]}... (Expires: {expiry})")
 

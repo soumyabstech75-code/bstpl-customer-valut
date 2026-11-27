@@ -884,22 +884,23 @@
       }
 
       select,
-      input[type="text"],
-      input[type="password"],
-      input[type="search"],
+      input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]):not([type="range"]):not([type="color"]):not([type="button"]):not([type="submit"]):not([type="reset"]),
       textarea {
-        height: 38px;
-        padding: 0 12px;
+        height: 40px;
+        padding: 0 13px;
         border-radius: 10px;
         border: 1.5px solid var(--line);
         background: var(--card);
         color: var(--text);
         font-family: inherit;
         font-weight: 600;
-        font-size: 13px;
+        font-size: 13.5px;
+        box-sizing: border-box;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
         outline: none;
-        transition: border-color 0.15s;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
       }
+      input::placeholder, textarea::placeholder { color: var(--muted); opacity: 0.72; font-weight: 500; }
 
       textarea {
         height: auto;
@@ -4104,11 +4105,39 @@
     // 4b. Sensorise Live Telematics & Quota Dashboard Synchronization
     let _homeSensoriseTimer = null;
     let _homeSensoriseExpiryStr = null;
+    let _homeSensoriseAutoRenewing = false;
+    let _homeSensoriseLastAutoAttempt = 0;
+
+    function parseSensoriseIstTime(str) {
+      if (!str) return NaN;
+      const s = String(str).trim();
+      if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}$/.test(s)) {
+        return Date.parse(s.replace(' ', 'T') + '+05:30');
+      }
+      let t = Date.parse(s.replace(' ', 'T'));
+      return isNaN(t) ? Date.parse(s) : t;
+    }
+
+    async function autoRenewHomeSensoriseToken() {
+      const now = Date.now();
+      if (_homeSensoriseAutoRenewing || (now - _homeSensoriseLastAutoAttempt) < 30000) return;
+      _homeSensoriseAutoRenewing = true;
+      _homeSensoriseLastAutoAttempt = now;
+      try {
+        const res = await api('/api/sensorise/generate-token', { method: 'POST' });
+        if (res && (res.status_code === 200 || res.apiResponseCode === 'LCM_001' || res.apiToken)) {
+          await updateHomeSensoriseCard(false, false);
+        }
+      } catch (e) {
+        console.warn('Auto token refresh notice:', e);
+      } finally {
+        _homeSensoriseAutoRenewing = false;
+      }
+    }
 
     function renderHomeSensoriseCountdown() {
       if (!_homeSensoriseExpiryStr) return;
-      let expTime = Date.parse(_homeSensoriseExpiryStr.replace(' ', 'T'));
-      if (isNaN(expTime)) expTime = Date.parse(_homeSensoriseExpiryStr);
+      const expTime = parseSensoriseIstTime(_homeSensoriseExpiryStr);
       if (isNaN(expTime)) {
         if ($('homeSensoriseCountdown')) $('homeSensoriseCountdown').textContent = _homeSensoriseExpiryStr;
         return;
@@ -4122,7 +4151,7 @@
 
       if (diff <= 0) {
         if (elCount) {
-          elCount.textContent = '⚠️ Expired';
+          elCount.textContent = _homeSensoriseAutoRenewing ? '⏳ Renewing…' : '⚠️ Expired';
           elCount.style.color = 'var(--danger, #ef4444)';
         }
         if (elBadge) {
@@ -4130,12 +4159,15 @@
           elBadge.style.background = 'rgba(239, 68, 68, 0.12)';
           elBadge.style.color = '#ef4444';
           elBadge.style.border = '1px solid rgba(239, 68, 68, 0.25)';
-          elBadge.textContent = '🔴 Token Expired';
+          elBadge.textContent = _homeSensoriseAutoRenewing ? '🔄 Auto-Renewing' : '🔴 Token Expired';
         }
         if (elState) {
-          elState.textContent = 'Click "Refresh Token" to generate a fresh token';
+          elState.textContent = _homeSensoriseAutoRenewing
+            ? 'Generating fresh token automatically…'
+            : 'Click "Refresh Token" to generate a fresh token';
           elState.style.color = 'var(--danger, #ef4444)';
         }
+        autoRenewHomeSensoriseToken();
       } else {
         const totalSecs = Math.floor(diff / 1000);
         const hours = Math.floor(totalSecs / 3600);
@@ -4177,8 +4209,10 @@
 
         const res = await api('/api/sensorise/status?probe=' + (probe ? 'true' : 'false'));
         const tokenLife = res?.token_lifecycle || {};
+        const sStatus = res?.server_status || {};
         const dbStats = res?.database_stats || {};
-        const remaining = tokenLife.transactions_remaining != null ? tokenLife.transactions_remaining : 100;
+        const quotaReached = Boolean(tokenLife.daily_quota_reached || sStatus.daily_quota_reached || sStatus.api_code === 'LCM_818');
+        const remaining = quotaReached ? 0 : (tokenLife.transactions_remaining != null ? tokenLife.transactions_remaining : 100);
         const expiry = tokenLife.expiry || '';
 
         // Remaining Quota
@@ -4192,9 +4226,11 @@
           $('homeSensoriseQuotaBar').style.background = remaining > 25 ? '#10b981' : (remaining > 10 ? '#f59e0b' : '#ef4444');
         }
         if ($('homeSensoriseQuotaSub')) {
-          $('homeSensoriseQuotaSub').textContent = remaining > 0
-            ? `${remaining} telematics fetches available on active token`
-            : `⚠️ Quota exhausted (0 remaining) - please generate fresh token`;
+          $('homeSensoriseQuotaSub').textContent = quotaReached
+            ? `⚠️ Daily 100-call quota reached (LCM_818) — serving cached & DB values`
+            : (remaining > 0
+              ? `${remaining} telematics fetches available on active token`
+              : `⚠️ Quota exhausted (0 remaining) - please generate fresh token`);
         }
 
         // SIM Count

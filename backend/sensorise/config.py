@@ -33,8 +33,8 @@ def _read_env_key(key: str, default: str = "") -> str:
 # MySQL / TiDB Cloud Database Configuration
 # ==============================================================================
 
-DB_USER = _read_env_key("DB_USER", os.getenv("DB_USER") or "2qvzCb4ckY28YTR.root")
-DB_PASSWORD = _read_env_key("DB_PASSWORD", os.getenv("DB_PASSWORD") or "TkUlyIt79g9JLww0")
+DB_USER = _read_env_key("DB_USER", os.getenv("DB_USER") or "2vXSDD24rFvcqpL.root")
+DB_PASSWORD = _read_env_key("DB_PASSWORD", os.getenv("DB_PASSWORD") or "G5hQndQULHq6xABn")
 DB_HOST = _read_env_key("DB_HOST", os.getenv("DB_HOST") or "gateway01.ap-northeast-1.prod.aws.tidbcloud.com")
 DB_PORT = int(_read_env_key("DB_PORT", os.getenv("DB_PORT") or "4000") or 4000)
 DB_NAME = _read_env_key("DB_NAME", os.getenv("DB_NAME") or "customer_database")

@@ -558,25 +558,31 @@
       text-transform: uppercase;
       letter-spacing: 0.04em;
     }
-    select, input[type="text"], input[type="password"], input[type="search"], textarea {
-      height: 38px;
-      padding: 0 12px;
+    select,
+    input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]):not([type="range"]):not([type="color"]):not([type="button"]):not([type="submit"]):not([type="reset"]),
+    textarea {
+      height: 40px;
+      padding: 0 13px;
       border-radius: 10px;
       border: 1.5px solid var(--line);
       background: var(--card);
       color: var(--text);
       font-family: inherit;
       font-weight: 600;
-      font-size: 13px;
+      font-size: 13.5px;
+      box-sizing: border-box;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
       outline: none;
-      transition: border-color 0.15s;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
+    input::placeholder, textarea::placeholder { color: var(--muted); opacity: 0.72; font-weight: 500; }
     textarea {
       height: auto;
-      padding: 10px 12px;
+      padding: 10px 13px;
     }
     select:focus, input:focus, textarea:focus {
       border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
     }
     .form-grid {
       display: grid;
@@ -1850,6 +1856,7 @@
         <p class="err" id="dlgErrMessage" role="alert"></p>
         <div class="row" style="margin:16px 0 0; justify-content: flex-end; gap:8px; flex-wrap:wrap">
           <button class="b" type="button" id="btnCancelEditError" onclick="closeModal('dlgEditError')">Cancel</button>
+          <button class="b" type="button" id="btnSaveEditErrorOnly" style="background:var(--primary);color:#fff" title="Save edited fields directly to Errored Entries in database">💾 Save Edit to Database</button>
           <button class="b" type="button" id="btnForcePushFromEdit" style="background:#2563eb;color:#fff" title="Push this entry into the specified customer even with error">🚀 Push to Customer (Even with Error)</button>
           <button class="b p" type="submit" id="btnSaveUploadError">Upload to Customer</button>
         </div>
@@ -1881,7 +1888,7 @@
         </div>
         <div style="margin-bottom:14px">
           <label for="pushTargetCustManual" style="font-weight:600;display:block;margin-bottom:6px">Or Type Customer Name:</label>
-          <input id="pushTargetCustManual" placeholder="e.g. Tata_Motors or General_Customer" style="width:100%;padding:8px 12px;font-size:14px;border-radius:8px" />
+          <input id="pushTargetCustManual" placeholder="Enter customer or company name" style="width:100%;padding:8px 12px;font-size:14px;border-radius:8px" />
         </div>
         <p class="err" id="dlgPushErrMessage" role="alert" style="margin:0 0 10px"></p>
         <div class="row" style="margin:16px 0 0; justify-content: flex-end; gap:8px">
@@ -2737,18 +2744,36 @@
 
     function showEventPopup(opts) {
       opts = opts || {};
-      const title = opts.title || 'Notification';
+      const title = opts.title || 'Action Completed';
       const message = opts.message || '';
       const dlg = $('dlgEventPopup');
       if (!dlg || typeof dlg.showModal !== 'function') {
         toast((title ? title + ': ' : '') + message);
         return;
       }
-      if ($('eventPopupTitle')) $('eventPopupTitle').textContent = title;
-      if ($('eventPopupMessage')) $('eventPopupMessage').textContent = message;
+      if ($('dlgEventPopupTitle')) $('dlgEventPopupTitle').textContent = title;
+      if ($('dlgEventPopupMessage')) $('dlgEventPopupMessage').textContent = message;
+      if ($('dlgEventPopupTag')) $('dlgEventPopupTag').textContent = opts.tag || (opts.type === 'deleting' ? 'Deletion Completed' : 'Database Updated');
+      if ($('dlgEventPopupProgress')) $('dlgEventPopupProgress').textContent = opts.progress || '100% Complete';
+      if ($('dlgEventPopupTime')) $('dlgEventPopupTime').textContent = new Date().toLocaleTimeString();
+      if ($('dlgEventPopupIcon')) {
+        $('dlgEventPopupIcon').textContent = opts.icon || (opts.type === 'deleting' ? '🗑️' : (opts.type === 'editing' ? '✏️' : '✅'));
+      }
+      const metaEl = $('dlgEventPopupMeta');
+      if (metaEl) {
+        if (opts.meta && Object.keys(opts.meta).length) {
+          metaEl.hidden = false;
+          metaEl.innerHTML = Object.entries(opts.meta).map(([k, v]) => `<div><b>${esc(k)}:</b> ${esc(String(v ?? '—'))}</div>`).join('');
+        } else {
+          metaEl.hidden = true;
+          metaEl.innerHTML = '';
+        }
+      }
+      if ($('btnOkEventPopup')) $('btnOkEventPopup').onclick = () => closeModal('dlgEventPopup');
       try {
-        dlg.showModal();
-        setTimeout(() => { try { dlg.close(); } catch(e){} }, opts.duration || 3500);
+        if (!dlg.open) dlg.showModal();
+        clearTimeout(window._eventPopupTimer);
+        window._eventPopupTimer = setTimeout(() => { try { if (dlg.open) dlg.close(); } catch(e){} }, opts.duration || 4000);
       } catch(e) { toast(message); }
     }
 
@@ -3407,6 +3432,12 @@ async function loadErrorsContainer() {
             updateErrDeleteProgress(1, 1, `Entry #${id} moved to Cart (100%)!`, 0);
             finishErrDeleteProgress(`Entry #${id} moved to Cart (100% complete).`);
             toast(`✓ Errored entry #${id} moved to Cart.`);
+            showEventPopup({
+              type: 'deleting',
+              title: 'Errored Entry Moved to Cart',
+              message: `Errored entry #${id} has been moved to Cart and updated in the database.`,
+              meta: { 'Entry ID': `#${id}`, 'Action': 'Moved to Cart', 'Database': 'Saved' }
+            });
             await updateChrome();
             if (!cachedErrors.length) await loadErrorsContainer();
           } catch (err) {
@@ -3429,6 +3460,12 @@ async function loadErrorsContainer() {
             updateErrDeleteProgress(1, 1, `Entry #${id} permanently erased from database (100%)!`, 0);
             finishErrDeleteProgress(`Entry #${id} permanently erased (100% complete).`);
             toast(`✓ Errored entry #${id} permanently deleted.`);
+            showEventPopup({
+              type: 'deleting',
+              title: 'Errored Entry Deleted',
+              message: `Errored entry #${id} was permanently deleted from the database.`,
+              meta: { 'Entry ID': `#${id}`, 'Action': 'Deleted Permanently', 'Database': 'Saved' }
+            });
             await updateChrome();
             if (!cachedErrors.length) await loadErrorsContainer();
           } catch (err) {
@@ -3552,6 +3589,52 @@ async function loadErrorsContainer() {
       $('closeDlgEditError').onclick = () => $('dlgEditError').close();
       $('btnCancelEditError').onclick = () => $('dlgEditError').close();
 
+      if ($('btnSaveEditErrorOnly')) {
+        $('btnSaveEditErrorOnly').onclick = async () => {
+          $('dlgErrMessage').textContent = '';
+          const id = $('editErrorId').value;
+          if (!id) return;
+          const body = {
+            customer_name: $('errCustName').value.trim() || null,
+            imei: $('errImei').value.trim() || null,
+            device_sr_no: $('errDevSrNo').value.trim() || null,
+            iccid: $('errIccid').value.trim() || null,
+            msisdn1: $('errMsisdn1').value.trim() || null,
+            msisdn2: $('errMsisdn2').value.trim() || null,
+            act_date: $('errActDate').value || null,
+            expiry_date: $('errExpDate').value || null,
+            dispatched_date: $('errDispDate').value || null,
+            model: $('errModel').value.trim() || null,
+            sim_provider: $('errSimProvider').value.trim() || null,
+            firmware: $('errFirmware').value.trim() || null,
+            flash: $('errFlash').value.trim() || null,
+            sim_type: $('errSimType').value || null,
+            error_reason: $('dlgErrReasonText').textContent || 'Edited errored entry'
+          };
+          const btn = $('btnSaveEditErrorOnly');
+          try {
+            btn.disabled = true;
+            btn.textContent = 'Saving…';
+            await api(`/api/errors/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+            $('dlgEditError').close();
+            toast(`✓ Errored entry #${id} updated and saved to database.`);
+            showEventPopup({
+              type: 'editing',
+              title: 'Errored Entry Saved',
+              message: `Changes to errored entry #${id} were saved into the database.`,
+              meta: { 'Entry ID': `#${id}`, 'Customer': body.customer_name || '—', 'IMEI': body.imei || '—', 'Database': 'Saved' }
+            });
+            await loadErrorsContainer();
+            await updateChrome();
+          } catch (err) {
+            $('dlgErrMessage').textContent = err.message;
+          } finally {
+            btn.disabled = false;
+            btn.textContent = '💾 Save Edit to Database';
+          }
+        };
+      }
+
       $('formEditError').onsubmit = async e => {
         e.preventDefault();
         $('dlgErrMessage').textContent = '';
@@ -3658,6 +3741,12 @@ async function loadErrorsContainer() {
 
           const totalElapsed = ((Date.now() - startTime) / 1000).toFixed(1);
           toast(`✓ Moved all ${totalMoved || totalToMove} entries to Cart (${totalElapsed}s).`);
+          showEventPopup({
+            type: 'deleting',
+            title: 'Errored Entries Moved to Cart',
+            message: `Moved ${totalMoved || totalToMove} errored entries to Cart and saved to the database.`,
+            meta: { 'Entries Moved': totalMoved || totalToMove, 'Database': 'Saved' }
+          });
           await loadErrorsContainer();
           await updateChrome();
         } catch (err) {
@@ -3714,6 +3803,12 @@ async function loadErrorsContainer() {
             finishErrDeleteProgress(`Successfully erased all ${totalDeleted || totalToDelete} errored entries forever (100% complete)!`);
 
             toast(`✓ Permanently deleted all ${totalDeleted || totalToDelete} errored entries from database.`);
+            showEventPopup({
+              type: 'deleting',
+              title: 'All Errored Entries Deleted',
+              message: `Permanently deleted ${totalDeleted || totalToDelete} errored entries from the database.`,
+              meta: { 'Deleted Count': totalDeleted || totalToDelete, 'Database': 'Saved' }
+            });
             await loadErrorsContainer();
             await updateChrome();
           } catch (err) {
@@ -3780,6 +3875,12 @@ async function loadErrorsContainer() {
             finishErrDeleteProgress(`Successfully erased all ${totalDeleted || totalToDelete} selected errored record(s) forever (100% complete)!`);
 
             toast(`✓ Permanently deleted ${totalDeleted || totalToDelete} selected errored entries from database.`);
+            showEventPopup({
+              type: 'deleting',
+              title: 'Selected Errored Entries Deleted',
+              message: `Permanently deleted ${totalDeleted || totalToDelete} selected errored entries from the database.`,
+              meta: { 'Deleted Count': totalDeleted || totalToDelete, 'Database': 'Saved' }
+            });
             await loadErrorsContainer();
             await updateChrome();
           } catch (err) {
@@ -3851,6 +3952,12 @@ async function loadErrorsContainer() {
 
             finishErrDeleteProgress(`Successfully erased all ${totalDeleted || totalToDelete} filtered errored record(s) forever (100% complete)!`);
             toast(`✓ Permanently deleted ${totalDeleted || totalToDelete} filtered errored entries.`);
+            showEventPopup({
+              type: 'deleting',
+              title: 'Filtered Errored Entries Deleted',
+              message: `Permanently deleted ${totalDeleted || totalToDelete} filtered errored entries from the database.`,
+              meta: { 'Deleted Count': totalDeleted || totalToDelete, 'Database': 'Saved' }
+            });
             await loadErrorsContainer();
             await updateChrome();
           } catch (err) {

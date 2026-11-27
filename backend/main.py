@@ -80,6 +80,9 @@ def upgrade_database():
         ):
             if col not in have:
                 conn.execute(text(f"ALTER TABLE sim_devices ADD COLUMN {col} {ddl}"))
+        sim_idx = {idx["name"] for idx in insp.get_indexes("sim_devices")}
+        if "ix_sim_devices_msisdn2" not in sim_idx:
+            conn.execute(text("CREATE INDEX ix_sim_devices_msisdn2 ON sim_devices (msisdn2)"))
         old_admin = conn.execute(text("SELECT MIN(id) FROM users WHERE is_admin = TRUE")).scalar()
         # Tier rules: 0001 & 0007 super admin, 0002-0004 master admin, 0005-0010 admin; anyone created later keeps the
         # category a Super/Master Admin gave them (so an admin created as ID 0011+ is NOT demoted on restart).
@@ -150,6 +153,12 @@ async def lifespan(app: FastAPI):
         models.Base.metadata.create_all(bind=engine)
         upgrade_database()
         widen_avatar()
+        try:
+            from sensorise import db as sensorise_db
+            sensorise_db.init_db()
+            sensorise_db.ensure_sensorise_basic_table()
+        except Exception as s_init_err:
+            print(f"Sensorise DB startup notice: {s_init_err}")
         print("Database connected and schema verified successfully.")
     except Exception as e:
         print(f"Database startup notice: {e}")

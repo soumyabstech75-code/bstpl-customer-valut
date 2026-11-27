@@ -138,6 +138,16 @@ def diagnose_sensorise_error(
             )
         }
 
+    # Case 3b: LCM_995 No records found on Sensorise
+    if code == "LCM_995" or "no records found" in msg.lower():
+        return {
+            "title": "No Sensorise Records Found (LCM_995)",
+            "meaning": "Sensorise server processed the request, but none of the queried ICCIDs belong to or exist in this Sensorise SenseLCM account.",
+            "root_cause": "The queried ICCID(s) belong to another SIM provider (e.g., Airtel/Vodafone/Jio) or are not provisioned under your Relation ID.",
+            "common_reasons": "Batch queries included non-Sensorise ICCIDs or unassigned SIM cards.",
+            "action_items": "• These ICCIDs are cached negatively to avoid repeating redundant queries against your 100 calls/day limit."
+        }
+
     # Case 4: LCM_001 / LCM_200 / SUCCESS
     if code in ("LCM_001", "LCM_200", "SUCCESS", "200") or (status_code in (200, 201) and not str(code).startswith("LCM_8")):
         return {

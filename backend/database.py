@@ -38,8 +38,8 @@ if DATABASE_URL:
         DATABASE_URL = DATABASE_URL.replace("mysql://", "mysql+pymysql://", 1)
     print("Database configured via DATABASE_URL environment variable.")
 else:
-    DB_USER = os.getenv("DB_USER") or "2qvzCb4ckY28YTR.root"
-    DB_PASSWORD = os.getenv("DB_PASSWORD") or "TkUlyIt79g9JLww0"
+    DB_USER = os.getenv("DB_USER") or "2vXSDD24rFvcqpL.root"
+    DB_PASSWORD = os.getenv("DB_PASSWORD") or "G5hQndQULHq6xABn"
     DB_HOST = os.getenv("DB_HOST") or "gateway01.ap-northeast-1.prod.aws.tidbcloud.com"
     DB_PORT = os.getenv("DB_PORT") or "4000"
     DB_NAME = os.getenv("DB_NAME") or "customer_database"
@@ -121,7 +121,7 @@ def _create_robust_engine():
     eng = create_engine(
         DATABASE_URL,
         pool_pre_ping=True,
-        pool_recycle=180,
+        pool_recycle=90,
         pool_size=10,
         max_overflow=10,
         pool_timeout=15,
@@ -174,3 +174,29 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def run_db_read_retry(db, fn, retries: int = 1):
+    """Execute a read-only DB callable, retrying once after invalidating a dropped TiDB/MySQL connection."""
+    from sqlalchemy.exc import OperationalError
+    attempt = 0
+    while True:
+        try:
+            return fn()
+        except OperationalError as exc:
+            msg = str(exc).lower()
+            is_transient = any(tok in msg for tok in (
+                "2006", "2013", "2055", "lost connection", "gone away", "eof", "timed out", "broken pipe"
+            ))
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            if not is_transient or attempt >= retries:
+                raise
+            try:
+                conn = db.connection()
+                conn.invalidate()
+            except Exception:
+                pass
+            attempt += 1

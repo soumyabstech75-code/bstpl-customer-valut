@@ -197,22 +197,37 @@ def get_latest_diagnostic_log():
 @app.get("/api/sensorise/status", tags=["Authentication"])
 @app.get("/api/sensorise/config", tags=["Authentication"])
 def get_sensorise_status(probe: bool = False):
+    has_creds = bool(sensorise_client.shared_key or sensorise_client.auth_token)
+    if not sensorise_client.is_token_valid() and sensorise_client.shared_key:
+        try:
+            sensorise_client.ensure_valid_token(force_refresh=True)
+        except Exception as _tok_err:
+            print(f"[Notice] Auto token refresh on status check: {_tok_err}")
+
     if probe:
         conn_info = sensorise_client.test_connection()
     else:
         is_valid = sensorise_client.is_token_valid()
-        has_creds = bool(sensorise_client.shared_key or sensorise_client.auth_token)
+        quota_active = sensorise_client.is_daily_quota_active()
         conn_info = {
             "connected": is_valid,
+            "daily_quota_reached": quota_active,
             "server_url": sensorise_client.base_url,
             "mode": "live",
             "has_credentials": has_creds,
             "status_code": 200 if is_valid else (401 if has_creds else 0),
-            "message": "Connected and authorized on Sensorise SenseLCM server (LCM_001)." if is_valid else (
-                "Sensorise API token expired or quota exhausted. Please generate a fresh token." if has_creds else
-                "Sensorise credentials not configured."
+            "api_code": "LCM_818" if quota_active else ("LCM_001" if is_valid else None),
+            "message": (
+                "Connected to Sensorise SenseLCM server, but daily 100-call quota (LCM_818) is reached. Serving cached/database values."
+                if quota_active else
+                ("Connected and authorized on Sensorise SenseLCM server (LCM_001)." if is_valid else (
+                    "Sensorise API token expired or quota exhausted. Please generate a fresh token." if has_creds else
+                    "Sensorise credentials not configured."
+                ))
             )
         }
+    quota_active = bool(conn_info.get("daily_quota_reached") or sensorise_client.is_daily_quota_active())
+    remaining_calls = 0 if quota_active else sensorise_client.token_transactions_remaining
     db_stats = db.get_sensorise_summary_stats()
     return {
         "server_status": conn_info,
@@ -220,7 +235,8 @@ def get_sensorise_status(probe: bool = False):
         "token_lifecycle": {
             "has_token": bool(sensorise_client.auth_token),
             "is_valid": sensorise_client.is_token_valid(),
-            "transactions_remaining": sensorise_client.token_transactions_remaining,
+            "daily_quota_reached": quota_active,
+            "transactions_remaining": remaining_calls,
             "expiry": sensorise_client.get_token_expiry(),
             "token": sensorise_client.auth_token
         },
@@ -340,14 +356,15 @@ def check_sensorise_sim_bulk(payload: Optional[CheckSimBulkPayload] = None):
     else:
         res = sensorise_client.check_sim_bulk_v2(iccids=iccids, api_token=tok)
 
-    try:
-        regen_res = sensorise_client.generate_api_token()
-        if isinstance(res, dict) and regen_res.get("success"):
-            res["token_regenerated"] = True
-            res["apiToken"] = regen_res.get("apiToken")
-            res["tokenExpiry"] = regen_res.get("tokenExpiry")
-    except Exception:
-        pass
+    if not sensorise_client.is_token_valid():
+        try:
+            regen_res = sensorise_client.generate_api_token()
+            if isinstance(res, dict) and regen_res.get("success"):
+                res["token_regenerated"] = True
+                res["apiToken"] = regen_res.get("apiToken")
+                res["tokenExpiry"] = regen_res.get("tokenExpiry")
+        except Exception:
+            pass
     return res
 
 @app.post("/api/sensorise/search-by-iccid", tags=["Sensorise Services"])
@@ -414,14 +431,15 @@ def fetch_and_sync_sensorise(payload: SensoriseFetchPayload):
 def sync_sensorise_basic_file(payload: SensoriseSyncFilePayload):
     max_rows = payload.max_rows or 500
     res = sensorise_client.sync_from_basic_file(file_path=payload.file_path, max_rows=max_rows)
-    try:
-        regen_res = sensorise_client.generate_api_token()
-        if isinstance(res, dict) and regen_res.get("success"):
-            res["token_regenerated"] = True
-            res["apiToken"] = regen_res.get("apiToken")
-            res["tokenExpiry"] = regen_res.get("tokenExpiry")
-    except Exception:
-        pass
+    if not sensorise_client.is_token_valid():
+        try:
+            regen_res = sensorise_client.generate_api_token()
+            if isinstance(res, dict) and regen_res.get("success"):
+                res["token_regenerated"] = True
+                res["apiToken"] = regen_res.get("apiToken")
+                res["tokenExpiry"] = regen_res.get("tokenExpiry")
+        except Exception:
+            pass
     return res
 
 @app.get("/api/sensorise/available-columns", tags=["Column Mapping"])

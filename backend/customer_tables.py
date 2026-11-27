@@ -59,7 +59,8 @@ def get_cached_tables(conn):
     if now - _ALL_TABLES_CACHE["ts"] < 60 and _ALL_TABLES_CACHE["tables"]:
         return _ALL_TABLES_CACHE["tables"]
     try:
-        tables = inspect(conn).get_table_names()
+        bind = conn.get_bind() if hasattr(conn, "get_bind") else conn
+        tables = inspect(bind).get_table_names()
         _ALL_TABLES_CACHE["ts"] = now
         _ALL_TABLES_CACHE["tables"] = tables
         return tables

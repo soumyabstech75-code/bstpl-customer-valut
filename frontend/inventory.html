@@ -622,22 +622,23 @@
     }
 
     select,
-    input[type="text"],
-    input[type="password"],
-    input[type="search"],
+    input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]):not([type="range"]):not([type="color"]):not([type="button"]):not([type="submit"]):not([type="reset"]),
     textarea {
-      height: 38px;
-      padding: 0 12px;
+      height: 40px;
+      padding: 0 13px;
       border-radius: 10px;
       border: 1.5px solid var(--line);
       background: var(--card);
       color: var(--text);
       font-family: inherit;
       font-weight: 600;
-      font-size: 13px;
+      font-size: 13.5px;
+      box-sizing: border-box;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
       outline: none;
-      transition: border-color 0.15s;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
+    input::placeholder, textarea::placeholder { color: var(--muted); opacity: 0.72; font-weight: 500; }
 
     textarea {
       height: auto;
@@ -2171,7 +2172,7 @@
               <div style="position:relative;display:flex;align-items:center">
                 <span
                   style="position:absolute;left:13px;color:var(--primary);font-size:15px;pointer-events:none;opacity:0.85">🔍</span>
-                <input id="invQuery" placeholder="Type value to search…" autocomplete="off"
+                <input id="invQuery" placeholder="Search IMEI, ICCID, Serial, MSISDN, or Customer…" autocomplete="off"
                   style="width:100%;height:42px;padding:0 38px 0 38px;border-radius:10px;border:1.5px solid var(--line);background:var(--card);color:var(--text);font-size:13.5px;font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,0.04);transition:all 0.2s cubic-bezier(0.16,1,0.3,1)" />
                 <button class="b" id="invClear" type="button" title="Clear search"
                   style="position:absolute;right:8px;height:26px;width:26px;border-radius:50%;padding:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;background:var(--line);color:var(--muted);border:none;cursor:pointer;transition:all 0.15s">✕</button>
@@ -2327,7 +2328,7 @@
                   Name
                   (Typing an existing name adds records to that customer):</label>
                 <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-                  <input id="uploadNewCustName" placeholder="e.g. Tata_Motors or Acme_Corp"
+                  <input id="uploadNewCustName" placeholder="Enter customer or company name"
                     style="flex:1;min-width:280px;font-size:14px;padding:8px 12px;border-radius:8px" />
                   <span id="uploadNewCustHint" class="sub" style="font-size:12px;color:var(--ok)"></span>
                 </div>
@@ -2751,7 +2752,7 @@
                     <button class="b" data-valfilter="duplicate" type="button" id="btnFilterDup">⚠️ Duplicates (<span
                         id="vDupCount">0</span>)</button>
                     <button class="b" data-valfilter="invalid" type="button" id="btnFilterInvalid"
-                      style="font-weight:700;color:var(--danger)">❌ Invalids (<span
+                      style="font-weight:700;color:var(--danger)">⚠️ Errored Entries (<span
                         id="vInvalidBtnCount">0</span>)</button>
                   </div>
                 </div>
@@ -2773,7 +2774,7 @@
                 <div class="card stat" style="border-left-color:#f97316;padding:12px 14px"><b id="vDup"
                     style="color:#f97316">0</b><span>⚠️ Duplicates</span></div>
                 <div class="card stat" style="border-left-color:var(--danger);padding:12px 14px"><b id="vInvalidCount"
-                    style="color:var(--danger)">0</b><span>❌ Invalids</span></div>
+                    style="color:var(--danger)">0</b><span>⚠️ Errored Entries</span></div>
               </div>
 
               <!-- Reconciliation Status Box (Requirement 7) -->
@@ -2899,7 +2900,7 @@
                     style="color:#0284c7">0</b><span>Existing Records Updated <em id="progUpdatedOf"
                       style="font-style:normal;opacity:.75"></em></span></div>
                 <div class="card stat" style="padding:10px 14px;border-left-color:#94a3b8"><b
-                    id="progDupCount">0</b><span>Left As Is (duplicate / identical / invalid)</span></div>
+                    id="progDupCount">0</b><span>Saved to Errored Entries / Left As Is</span></div>
                 <div class="card stat" style="padding:10px 14px;border-left-color:var(--danger)"><b id="progFailedCount"
                     style="color:var(--danger)">0</b><span>Failed</span></div>
               </div>
@@ -2949,6 +2950,34 @@
               <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
                 <button class="b p" id="btnViewUploadedInInv" type="button">📋 View Records in Inventory Table</button>
                 <button class="b" id="btnViewCustAfterUpload" type="button">📁 View Customer Portfolios</button>
+              </div>
+            </div>
+
+            <!-- Errored Entries Tables Container inside Bulk Upload (Saved in Database) -->
+            <div id="bulkSavedErrorsCard" class="card"
+              style="padding:18px 20px;border:1.5px solid var(--warn, #d97706);border-radius:12px;margin:18px 0 6px;background:var(--card)">
+              <div
+                style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+                <div>
+                  <h4 style="margin:0;font-size:15px;display:flex;align-items:center;gap:8px">
+                    <span>⚠️</span>
+                    <span>Errored Entries Tables Container</span>
+                    <span class="badge" id="bulkErrTotalBadge"
+                      style="background:rgba(217,119,6,0.16);color:var(--warn);font-size:11.5px;padding:2px 9px;border-radius:99px;font-weight:800">0 in DB</span>
+                  </h4>
+                  <p class="sub" style="margin:2px 0 0;font-size:12px">
+                    Errored entries from Bulk Upload are stored here in the database. Edit or delete any entry below (changes save to database with confirmation popup).
+                  </p>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                  <input type="search" id="bulkErrSearch" placeholder="🔍 Search saved errored entries…"
+                    style="font-size:12.5px;padding:6px 12px;border-radius:8px;min-width:220px;border:1px solid var(--line)" />
+                  <button class="b" id="btnRefreshBulkErrors" type="button" style="height:34px;padding:0 12px;font-size:12.5px;font-weight:700">🔄 Refresh</button>
+                  <a class="b" href="errors.html" style="height:34px;padding:0 12px;font-size:12.5px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center">Open Full Page ➔</a>
+                </div>
+              </div>
+              <div id="bulkSavedErrorsWrap" style="max-height:380px;overflow:auto;border:1px solid var(--line);border-radius:8px">
+                <div class="empty">Loading errored entries from database…</div>
               </div>
             </div>
           </div>
@@ -3421,7 +3450,7 @@
               <span
                 style="position:absolute;bottom:-4px;right:-4px;font-size:12px;background:var(--card);border:1px solid var(--line);border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,0.15)">Add</span>
             </div>
-            <h3 id="devTitle" style="margin:0;font-size:18px;font-weight:800;color:var(--text)" style="margin:0">Device
+            <h3 id="devTitle" style="margin:0;font-size:18px;font-weight:800;color:var(--text)">Device
               Record</h3>
           </div>
           <p class="sub" id="devSubTitle" style="margin:2px 0 0;font-size:12px">Register a new SIM / hardware record
@@ -3841,6 +3870,50 @@
     </div>
   </dialog>
 
+  <!-- Modal Dialog: Edit Errored Entry (Bulk Upload & Database) -->
+  <dialog id="dlgEditBulkError" class="modal-card" style="width:min(720px, 95vw);border-radius:16px">
+    <form id="formEditBulkError" style="padding:20px 22px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <h3 style="margin:0;font-size:17px" id="dlgEditBulkErrorTitle">✏️ Edit Errored Entry</h3>
+        <button class="b ghost" type="button" onclick="closeModal('dlgEditBulkError')" style="font-size:20px;padding:4px 10px;cursor:pointer">✕</button>
+      </div>
+      <div class="note" style="background:rgba(217,119,6,0.12);border:1px solid var(--warn);padding:8px 12px;border-radius:8px;margin-bottom:12px;font-size:12.5px">
+        <b>Error Reason:</b> <span id="bulkEditErrReason" style="color:var(--danger)">Invalid data</span>
+      </div>
+      <input type="hidden" id="bulkEditErrMode" />
+      <input type="hidden" id="bulkEditErrId" />
+      <input type="hidden" id="bulkEditErrRowIdx" />
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:10px">
+        <div><label for="bulkErrCustName">Customer Name</label><input id="bulkErrCustName" /></div>
+        <div><label for="bulkErrImei">IMEI</label><input id="bulkErrImei" /></div>
+        <div><label for="bulkErrDevSrNo">Device SR No</label><input id="bulkErrDevSrNo" /></div>
+        <div><label for="bulkErrIccid">ICCID</label><input id="bulkErrIccid" /></div>
+        <div><label for="bulkErrMsisdn1">MSISDN 1</label><input id="bulkErrMsisdn1" /></div>
+        <div><label for="bulkErrMsisdn2">MSISDN 2</label><input id="bulkErrMsisdn2" /></div>
+        <div><label for="bulkErrActDate">Act Date</label><input type="date" id="bulkErrActDate" /></div>
+        <div><label for="bulkErrExpDate">Expiry Date</label><input type="date" id="bulkErrExpDate" /></div>
+        <div><label for="bulkErrDispDate">Dispatched Date</label><input type="date" id="bulkErrDispDate" /></div>
+        <div><label for="bulkErrModel">Model</label><input id="bulkErrModel" /></div>
+        <div><label for="bulkErrSimProvider">SIM Provider</label><input id="bulkErrSimProvider" /></div>
+        <div><label for="bulkErrFirmware">Firmware</label><input id="bulkErrFirmware" /></div>
+        <div><label for="bulkErrFlash">Flash</label><input id="bulkErrFlash" /></div>
+        <div><label for="bulkErrSimType">SIM Type</label>
+          <select id="bulkErrSimType">
+            <option value="">Auto-Detect</option>
+            <option value="Plastic SIM">Plastic SIM</option>
+            <option value="E-SIM">E-SIM</option>
+          </select>
+        </div>
+      </div>
+      <p class="err" id="bulkEditErrMsg" role="alert" style="margin-top:10px"></p>
+      <div class="row" style="margin-top:14px;justify-content:flex-end;gap:8px;flex-wrap:wrap">
+        <button class="b" type="button" onclick="closeModal('dlgEditBulkError')">Cancel</button>
+        <button class="b p" type="submit" id="btnSaveBulkErrEdit">💾 Save to Database</button>
+        <button class="b" type="button" id="btnUploadBulkErrToCust" hidden style="background:var(--ok);color:#fff;font-weight:700">🚀 Upload to Customer</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Modal Dialog: Improper IMEI / ICCID Length Alert & Rectification -->
   <dialog id="dlgImproperLengthAlert" class="dlg modal-card"
     style="max-width:1050px;width:95vw;max-height:92vh;border-radius:18px;box-shadow:0 24px 60px rgba(0,0,0,0.4);padding:0;overflow:hidden;border:1.5px solid var(--line);z-index:99999">
@@ -4204,6 +4277,19 @@
       return `<span class="badge" style="background:rgba(245,158,11,0.12);color:#d97706;border:1px solid rgba(245,158,11,0.3);font-size:9.5px;padding:1px 5px;border-radius:6px;margin-left:4px;white-space:nowrap;font-weight:700;display:inline-flex;align-items:center;gap:2px" title="Sensorise Server difference: Previous database value was '${esc(diff.old)}', updated to '${esc(diff.new)}'"><span style="font-size:8.5px">⚡</span> was ${esc(diff.old)}</span>`;
     }
 
+    function renderSourceBadge(d) {
+      if (!d) return '';
+      const src = String((d.source || d.data_source) || '').toLowerCase().trim();
+      const idStr = String(d.id || '');
+      const diffs = d.sensorise_diff || (d.extra && typeof d.extra === 'object' ? d.extra._sensorise_diff : null);
+      const diffCount = diffs && typeof diffs === 'object' ? Object.keys(diffs).length : 0;
+      const diffBadge = diffCount > 0 ? `<span class="badge" style="background:rgba(245,158,11,0.15);color:#d97706;border:1px solid rgba(245,158,11,0.35);font-size:9.5px;padding:1px 6px;border-radius:10px;white-space:nowrap;font-weight:800;display:inline-flex;align-items:center;gap:3px;margin-left:4px" title="⚡ ${diffCount} telematics difference(s) detected and synced from Sensorise server"><span style="font-size:8.5px">⚡</span> ${diffCount} Diff${diffCount > 1 ? 's' : ''} Synced</span>` : '';
+      if (src.includes('sensorise') || src.includes('server') || idStr.startsWith('sensorise_')) {
+        return `<span class="badge" style="background:#e0e7ff;color:#4338ca;border:1px solid #c7d2fe;font-size:10px;font-weight:700;padding:2px 7px;border-radius:12px;white-space:nowrap;display:inline-flex;align-items:center;gap:4px" title="Sensorise"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#4f46e5"></span>📡 Sensorise</span>${diffBadge}`;
+      }
+      return `<span class="badge" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;font-size:10px;font-weight:700;padding:2px 7px;border-radius:12px;white-space:nowrap;display:inline-flex;align-items:center;gap:4px" title="Website Database"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#d97706"></span>💾 Website Database</span>${diffBadge}`;
+    }
+
     const cell = (d, k) => {
       const val = d[k];
       if (['msisdn1', 'msisdn2', 'act_date', 'activation_date'].includes(k)) {
@@ -4245,7 +4331,12 @@
         ${act ? '<th>Actions</th>' : ''}
       </tr></thead><tbody>
       ${list.map(d => `<tr>
-        <td><b>${d.id}</b></td>
+        <td>
+          <div style="display:inline-flex;flex-direction:column;gap:3px;align-items:flex-start">
+            <b>${d.id}</b>
+            ${renderSourceBadge(d)}
+          </div>
+        </td>
         ${COLS.map(c => `<td>${cell(d, c[0])}</td>`).join('')}
         ${XC.map(c => `<td>${esc((d.extra || {})[c])}</td>`).join('')}
         ${ex.map(c => `<td>${esc(d[c[0]] || '')}</td>`).join('')}
@@ -4415,22 +4506,22 @@
           <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:12px">
             <div>
               <label style="font-size:12px;font-weight:700;margin-bottom:4px;display:block">Customer Name <span style="color:var(--danger)">*</span></label>
-              <input data-devf="customer_name" list="custNameDatalist" value="${esc(dev.customer_name || '')}" placeholder="Type or select customer" required
+              <input data-devf="customer_name" list="custNameDatalist" value="${esc(dev.customer_name || '')}" placeholder="Select or enter customer name" required
                 style="width:100%;height:40px;padding:0 12px;border-radius:8px;border:1.5px solid var(--line);background:var(--card);color:var(--text);font-size:13.5px;box-sizing:border-box" />
             </div>
             <div>
               <label style="font-size:12px;font-weight:700;margin-bottom:4px;display:block">Device SR No</label>
-              <input data-devf="device_sr_no" value="${esc(dev.device_sr_no || '')}" placeholder="e.g. SR-89042"
+              <input data-devf="device_sr_no" value="${esc(dev.device_sr_no || '')}" placeholder="Enter device serial number"
                 style="width:100%;height:40px;padding:0 12px;border-radius:8px;border:1.5px solid var(--line);background:var(--card);color:var(--text);font-size:13.5px;box-sizing:border-box" />
             </div>
             <div>
               <label style="font-size:12px;font-weight:700;margin-bottom:4px;display:block">IMEI Number <span style="color:var(--danger)">*</span></label>
-              <input data-devf="imei" value="${esc(dev.imei || '')}" placeholder="15-digit IMEI" required
+              <input data-devf="imei" value="${esc(dev.imei || '')}" placeholder="Enter 15-digit IMEI number" required
                 style="width:100%;height:40px;padding:0 12px;border-radius:8px;border:1.5px solid var(--line);background:var(--card);color:var(--text);font-size:13.5px;box-sizing:border-box;font-family:monospace" />
             </div>
             <div>
               <label style="font-size:12px;font-weight:700;margin-bottom:4px;display:block">ICCID</label>
-              <input data-devf="iccid" value="${esc(dev.iccid || '')}" placeholder="20-digit SIM ICCID"
+              <input data-devf="iccid" value="${esc(dev.iccid || '')}" placeholder="Enter 19–20 digit SIM ICCID"
                 style="width:100%;height:40px;padding:0 12px;border-radius:8px;border:1.5px solid var(--line);background:var(--card);color:var(--text);font-size:13.5px;box-sizing:border-box;font-family:monospace" />
             </div>
           </div>
@@ -4452,22 +4543,22 @@
             </div>
             <div>
               <label style="font-size:12px;font-weight:700;margin-bottom:4px;display:block">SIM Provider</label>
-              <input data-devf="sim_provider" value="${esc(dev.sim_provider || '')}" placeholder="e.g. Airtel, Vodafone, Jio"
+              <input data-devf="sim_provider" value="${esc(dev.sim_provider || '')}" placeholder="e.g., Airtel, Vodafone, Jio"
                 style="width:100%;height:40px;padding:0 12px;border-radius:8px;border:1.5px solid var(--line);background:var(--card);color:var(--text);font-size:13.5px;box-sizing:border-box" />
             </div>
             <div>
               <label style="font-size:12px;font-weight:700;margin-bottom:4px;display:block">MSISDN 1 (Primary Phone)</label>
-              <input data-devf="msisdn1" value="${esc(dev.msisdn1 || '')}" placeholder="Primary SIM Phone #"
+              <input data-devf="msisdn1" value="${esc(dev.msisdn1 || '')}" placeholder="Enter primary mobile number"
                 style="width:100%;height:40px;padding:0 12px;border-radius:8px;border:1.5px solid var(--line);background:var(--card);color:var(--text);font-size:13.5px;box-sizing:border-box" />
             </div>
             <div>
               <label style="font-size:12px;font-weight:700;margin-bottom:4px;display:block">MSISDN 2 (Secondary Phone)</label>
-              <input data-devf="msisdn2" value="${esc(dev.msisdn2 || '')}" placeholder="Secondary SIM Phone #"
+              <input data-devf="msisdn2" value="${esc(dev.msisdn2 || '')}" placeholder="Enter secondary mobile number"
                 style="width:100%;height:40px;padding:0 12px;border-radius:8px;border:1.5px solid var(--line);background:var(--card);color:var(--text);font-size:13.5px;box-sizing:border-box" />
             </div>
             <div>
               <label style="font-size:12px;font-weight:700;margin-bottom:4px;display:block">Activation Plan</label>
-              <input data-devf="activation_plan" value="${esc(dev.activation_plan || '')}" placeholder="e.g. 1 Year Standard"
+              <input data-devf="activation_plan" value="${esc(dev.activation_plan || '')}" placeholder="e.g., 1 Year Standard Plan"
                 style="width:100%;height:40px;padding:0 12px;border-radius:8px;border:1.5px solid var(--line);background:var(--card);color:var(--text);font-size:13.5px;box-sizing:border-box" />
             </div>
           </div>
@@ -5164,18 +5255,36 @@
 
     function showEventPopup(opts) {
       opts = opts || {};
-      const title = opts.title || 'Notification';
+      const title = opts.title || 'Action Completed';
       const message = opts.message || '';
       const dlg = $('dlgEventPopup');
       if (!dlg || typeof dlg.showModal !== 'function') {
         toast((title ? title + ': ' : '') + message);
         return;
       }
-      if ($('eventPopupTitle')) $('eventPopupTitle').textContent = title;
-      if ($('eventPopupMessage')) $('eventPopupMessage').textContent = message;
+      if (document.getElementById('dlgEventPopupTitle')) document.getElementById('dlgEventPopupTitle').textContent = title;
+      if (document.getElementById('dlgEventPopupMessage')) document.getElementById('dlgEventPopupMessage').textContent = message;
+      if (document.getElementById('dlgEventPopupTag')) document.getElementById('dlgEventPopupTag').textContent = opts.tag || (opts.type === 'deleting' ? 'Deletion Completed' : (opts.type === 'editing' ? 'Edit Saved' : 'Database Updated'));
+      if (document.getElementById('dlgEventPopupProgress')) document.getElementById('dlgEventPopupProgress').textContent = opts.progress || '100% Complete';
+      if (document.getElementById('dlgEventPopupTime')) document.getElementById('dlgEventPopupTime').textContent = new Date().toLocaleTimeString();
+      if (document.getElementById('dlgEventPopupIcon')) {
+        document.getElementById('dlgEventPopupIcon').textContent = opts.icon || (opts.type === 'deleting' ? '🗑️' : (opts.type === 'editing' ? '✏️' : '✅'));
+      }
+      const metaEl = document.getElementById('dlgEventPopupMeta');
+      if (metaEl) {
+        if (opts.meta && Object.keys(opts.meta).length) {
+          metaEl.hidden = false;
+          metaEl.innerHTML = Object.entries(opts.meta).map(([k, v]) => `<div><b>${esc(k)}:</b> ${esc(String(v ?? '—'))}</div>`).join('');
+        } else {
+          metaEl.hidden = true;
+          metaEl.innerHTML = '';
+        }
+      }
+      if (document.getElementById('btnOkEventPopup')) document.getElementById('btnOkEventPopup').onclick = () => closeModal('dlgEventPopup');
       try {
-        dlg.showModal();
-        setTimeout(() => { try { dlg.close(); } catch (e) { } }, opts.duration || 3500);
+        if (!dlg.open) dlg.showModal();
+        clearTimeout(window._eventPopupTimer);
+        window._eventPopupTimer = setTimeout(() => { try { if (dlg.open) dlg.close(); } catch (e) { } }, opts.duration || 4000);
       } catch (e) { toast(message); }
     }
 
@@ -5369,15 +5478,19 @@
         b.classList.toggle('active', b.dataset.sub === view);
       });
       const vDev = $('subViewDevices'), vCust = $('subViewCust'), vUpl = $('subViewUpload');
+      const isUploadView = (view === 'upload' || view === 'simple');
       if (vDev) vDev.hidden = (view !== 'devices');
       if (vCust) vCust.hidden = (view !== 'cust');
-      if (vUpl) vUpl.hidden = (view !== 'upload');
+      if (vUpl) vUpl.hidden = !isUploadView;
 
       if (view === 'devices') {
         if (typeof fetchInventoryRows === 'function') fetchInventoryRows();
       } else if (view === 'cust') {
         if (typeof loadCustomerFilesContainer === 'function') loadCustomerFilesContainer();
-      } else if (view === 'upload') {
+      } else if (isUploadView) {
+        if (typeof window._setSimpleUploadMode === 'function') {
+          window._setSimpleUploadMode(view === 'simple');
+        }
         if (typeof initBulkUploadContainer === 'function') initBulkUploadContainer();
       }
     }
@@ -6582,7 +6695,7 @@
       const chip = (label, v, c) => `<span style="display:inline-block;margin:4px 6px 0 0;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700;border:1px solid ${c};color:${c}">${label}: ${Number(v).toLocaleString()}</span>`;
       const chips = '<div style="margin-top:8px">' +
         chip('✅ Valid Entries', valid, 'var(--ok)') + chip('✨ New', nw, 'var(--ok)') + chip('🔄 Update', up, 'var(--primary)') +
-        chip('📋 Unchanged', ex, 'var(--muted)') + chip('⚠️ Duplicates', du, 'var(--warn)') + chip('❌ Invalid (pushed as is)', inv, 'var(--danger)') +
+        chip('📋 Unchanged', ex, 'var(--muted)') + chip('⚠️ Duplicates', du, 'var(--warn)') + chip('⚠️ Errored Entries (saved to DB)', inv, 'var(--danger)') +
         chip('📄 Total rows', total, 'var(--ink)') + chip('👥 Customers', custs, 'var(--ink)') + '</div>';
       const idLine = du === 0
         ? '🔐 <b>Unique identifiers:</b> ✅ no repeated Device Sr No, IMEI or ICCID/CCID found (in the file or in the database).'
@@ -6590,11 +6703,12 @@
       const dateLine = '📅 <b>Dates:</b> Activation, Expiry and Dispatched dates are accepted as given (any year; expiry may be before activation). Only impossible dates such as 31-Sep are left blank.';
       const extra = chips + `<div style="margin-top:8px;font-size:12.5px;line-height:1.6">${idLine}<br>${dateLine}</div>`;
       if (!total) return box('var(--card-subtle)', 'var(--line)', 'ℹ️', 'Empty', 'No data rows were found in the selected sheets.');
-      const pushed = nw + up + inv;                           // rows that really go to the database
-      if (pushed === 0) return box(ex > 0 && du === 0 ? 'var(--card-subtle)' : 'rgba(220,38,38,.08)', ex > 0 && du === 0 ? 'var(--ok)' : 'var(--danger)', ex > 0 && du === 0 ? 'ℹ️' : '❌',
+      const pushed = nw + up;
+      if (pushed === 0 && inv === 0) return box(ex > 0 && du === 0 ? 'var(--card-subtle)' : 'rgba(220,38,38,.08)', ex > 0 && du === 0 ? 'var(--ok)' : 'var(--danger)', ex > 0 && du === 0 ? 'ℹ️' : '❌',
         ex > 0 && du === 0 ? 'Valid — nothing to change' : 'Rejected', ex > 0 && du === 0 ? 'All rows already exist with identical values.' : 'Every row is a duplicate, so nothing can be uploaded.', extra);
-      if (du + inv > 0) return box('rgba(217,119,6,.10)', 'var(--warn)', '⚠️', 'Has Issues — will upload',
-        `<b>${pushed.toLocaleString()}</b> of <b>${total.toLocaleString()}</b> rows will be uploaded (${nw.toLocaleString()} new, ${up.toLocaleString()} updated${inv ? `, <b>${inv.toLocaleString()} invalid pushed as they are</b>` : ''}). ` +
+      if (du + inv > 0) return box('rgba(217,119,6,.10)', 'var(--warn)', '⚠️', 'Has Errored / Duplicate Entries',
+        `<b>${pushed.toLocaleString()}</b> of <b>${total.toLocaleString()}</b> rows will be uploaded to inventory (${nw.toLocaleString()} new, ${up.toLocaleString()} updated). ` +
+        `${inv ? `<b>${inv.toLocaleString()}</b> errored entry/entries will be saved to the <b>Errored Entries</b> container in the database. ` : ''}` +
         `${du ? `<b>${du.toLocaleString()}</b> duplicate row(s) are NOT uploaded.` : ''}`, extra);
       if (nw + up === 0) return box('var(--card-subtle)', 'var(--ok)', 'ℹ️', 'Valid — nothing to change', 'All rows are valid and already identical to the database.', extra);
       return box('rgba(16,185,129,.10)', 'var(--ok)', '✅', 'Valid — ready to upload',
@@ -7444,13 +7558,13 @@
           </label>`;
           }).join('');
 
-          const processSheets = () => {
+          const collectRowsFromSelectedSheets = () => {
             const selected = [...document.querySelectorAll('.sheet-chk:checked')].map(c => c.value);
             if (!selected.length) {
               parsedRows = [];
               $('valSummaryWrap').hidden = true;
               toast('⚠️ Please select at least one worksheet.');
-              return;
+              return null;
             }
 
             // Auto-populate optional fields from file if currently unselected / blank in UI
@@ -7553,6 +7667,15 @@
               });
             });
 
+            return { selected, allRows, totalIgnoredEmptyRows };
+          };
+          window._collectSimpleRows = collectRowsFromSelectedSheets;
+
+          const processSheets = () => {
+            const collected = collectRowsFromSelectedSheets();
+            if (!collected) return;
+            const { selected, allRows, totalIgnoredEmptyRows } = collected;
+
             // Map of all identified customers across the scanned file
             const custSummaryMap = new Map();
             allRows.forEach(dev => {
@@ -7597,7 +7720,12 @@
             };
           }
           $('valSummaryWrap').hidden = true;
-          toast('Worksheets scanned! Click "Validate File & Check Entries" to verify database tables and segregate entries.');
+          if (window._simpleUploadMode && document.getElementById('simpleActionBar')) {
+            document.getElementById('simpleActionBar').hidden = false;
+            toast('Worksheets scanned! Click "Push Now (Simple Upload)" to upload directly.');
+          } else {
+            toast('Worksheets scanned! Click "Validate File & Check Entries" to verify database tables and segregate entries.');
+          }
         } catch (err) { fail(err); }
       };
 
@@ -7674,6 +7802,7 @@
             <th>Flash</th>
             <th>Firmware</th>
             <th>Extra Columns</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -7690,9 +7819,9 @@
           } else if (st === 'Duplicate') {
             badgeBg = 'var(--warn)';
             badgeText = '⚠️ In-File Duplicate (Skipped)';
-          } else if (st === 'Invalid') {
+          } else if (st === 'Invalid' || st === 'Errored Entry') {
             badgeBg = 'var(--danger)';
-            badgeText = '❌ Invalid Record (Skipped)';
+            badgeText = '⚠️ Errored Entry';
           }
 
           const normExp = String(r.expiry_status || '').toLowerCase().replace(/[\s_-]+/g, '');
@@ -7708,12 +7837,20 @@
           }
 
           const extraStr = r.extra ? Object.entries(r.extra).map(([k, v]) => `${esc(k)}: ${esc(v)}`).join(', ') : '—';
+          const rowIdx = (r.row_num && r.row_num > 0) ? (r.row_num - 1) : -1;
+          const isErrRow = (st === 'Invalid' || st === 'Errored Entry');
+          const actionHtml = rowIdx >= 0
+            ? `<div style="display:flex;gap:5px;white-space:nowrap">
+                <button type="button" class="b" data-valedit="${rowIdx}" style="height:26px;padding:0 8px;font-size:11px;font-weight:700" title="Edit this entry">✏️ Edit</button>
+                <button type="button" class="b d" data-valdel="${rowIdx}" style="height:26px;padding:0 8px;font-size:11px;font-weight:700;background:#dc2626;color:#fff" title="Delete this entry">🗑️ Delete</button>
+               </div>`
+            : '—';
           return `
               <tr>
                 <td>${r.row_num || '—'}</td>
                 <td><span class="badge" style="background:${badgeBg};color:${st === 'Duplicate' ? '#111' : '#fff'};font-weight:700;padding:3px 8px;border-radius:4px">${badgeText}</span></td>
                 <td>${expBadge}</td>
-                <td style="color:${st === 'Invalid' ? 'var(--danger)' : (st === 'Duplicate' ? 'var(--warn)' : ((st === 'Updated' || st === 'Requires Update') ? '#0284c7' : (st === 'Existing' ? 'var(--muted)' : 'var(--ok)')))}">${esc(r.reason || '')}</td>
+                <td style="color:${isErrRow ? 'var(--danger)' : (st === 'Duplicate' ? 'var(--warn)' : ((st === 'Updated' || st === 'Requires Update') ? '#0284c7' : (st === 'Existing' ? 'var(--muted)' : 'var(--ok)')))}">${esc(r.reason || '')}</td>
                 <td><b>${esc(r.customer_name || '—')}</b></td>
                 <td><code>${esc(r.device_sr_no || '—')}</code></td>
                 <td><b><code>${esc(r.imei || '—')}</code></b></td>
@@ -7727,6 +7864,7 @@
                 <td>${esc(r.flash || '—')}</td>
                 <td>${esc(r.firmware || '—')}</td>
                 <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(extraStr)}">${extraStr}</td>
+                <td>${actionHtml}</td>
               </tr>
             `;
         }).join('')}
@@ -8325,9 +8463,37 @@
 
           valResult.new_customers = Array.from(newCustSet);
           valResult.new_columns = Array.from(newColSet);
+          valResult.invalid_sample.forEach(x => { x.entry_type = 'Errored Entry'; x.status = 'Errored Entry'; });
+
+          // Flag improper IMEI/ICCID length rows as Errored Entries right in validation review
+          const improperChecked = findImproperLengthRows(rows);
+          improperChecked.forEach(item => {
+            const idx = item.rowIdx;
+            const prev = rowStatus[idx];
+            if (prev === 'D' || prev === 'I') return;
+            if (prev === 'N') valResult.new_count = Math.max(0, (valResult.new_count || 0) - 1);
+            else if (prev === 'U') valResult.updated_count = Math.max(0, (valResult.updated_count || 0) - 1);
+            else if (prev === 'E') valResult.existing_count = Math.max(0, (valResult.existing_count || 0) - 1);
+            const rNum = idx + 1;
+            valResult.new_sample = valResult.new_sample.filter(x => x.row_num !== rNum);
+            valResult.updated_sample = valResult.updated_sample.filter(x => x.row_num !== rNum);
+            valResult.existing_sample = valResult.existing_sample.filter(x => x.row_num !== rNum);
+            rowStatus[idx] = 'I';
+            rowReasons.set(idx, item.combinedReasons || 'Improper IMEI or ICCID length');
+            valResult.invalid_count = (valResult.invalid_count || 0) + 1;
+            if (valResult.invalid_sample.length < CAP) {
+              valResult.invalid_sample.push(Object.assign({}, rows[idx], {
+                row_num: rNum,
+                entry_type: 'Errored Entry',
+                status: 'Errored Entry',
+                reason: item.combinedReasons || 'Improper IMEI or ICCID length'
+              }));
+            }
+          });
+
           valResult.valid_count = valResult.new_count + valResult.updated_count;
           valResult.entries_requiring_update = valResult.updated_sample;   // used by the older "rectify" buttons
-          valResult.all_sample = valResult.new_sample.slice(0, 150).concat(valResult.updated_sample.slice(0, 150), valResult.existing_sample.slice(0, 150));
+          valResult.all_sample = valResult.new_sample.slice(0, 150).concat(valResult.updated_sample.slice(0, 150), valResult.existing_sample.slice(0, 150), valResult.invalid_sample.slice(0, 150));
           valResult.rowStatus = rowStatus;
           valResult.rowReasons = rowReasons;
           activeValResult = valResult;
@@ -8341,9 +8507,9 @@
 
           const validCnt = Math.max(0, totalCnt - dupCnt - invalidCnt);   // every row that passed all checks (new + changed + identical)
           const reviewCnt = invalidCnt;
-          const eligibleToAdd = newCnt + invalidCnt;        // not in the database yet -> inserted (invalid rows are pushed as they are)
+          const eligibleToAdd = newCnt;                     // only valid New entries go into sim_devices; Errored Entries go to sim_errored_records
           const eligibleToUpdate = updatedCnt;              // in the database, values differ -> only the changed values are replaced
-          const cannotAdd = Math.max(0, totalCnt - eligibleToAdd - updatedCnt);   // duplicates + identical-to-database (NOT uploaded)
+          const cannotAdd = Math.max(0, totalCnt - eligibleToAdd - updatedCnt - invalidCnt);   // duplicates + identical-to-database
 
           // Update 7 Metric Cards (Requirement 3, 5 & 7)
           if ($('vTotalScanned')) $('vTotalScanned').textContent = totalCnt.toLocaleString();
@@ -8357,7 +8523,7 @@
           // Reconciliation Math Container (Requirement 7)
           if ($('valReconciliationBox')) $('valReconciliationBox').hidden = false;
           if ($('reconcileEquation')) {
-            $('reconcileEquation').textContent = `${totalCnt.toLocaleString()} = ${newCnt.toLocaleString()} (Add) + ${eligibleToUpdate.toLocaleString()} (Update) + ${existingCnt.toLocaleString()} (Unchanged) + ${dupCnt.toLocaleString()} (Duplicates) + ${invalidCnt.toLocaleString()} (Invalid, uploaded as is)`;
+            $('reconcileEquation').textContent = `${totalCnt.toLocaleString()} = ${newCnt.toLocaleString()} (Add) + ${eligibleToUpdate.toLocaleString()} (Update) + ${existingCnt.toLocaleString()} (Unchanged) + ${dupCnt.toLocaleString()} (Duplicates) + ${invalidCnt.toLocaleString()} (Errored Entries → Database)`;
           }
           if ($('reconcileBadge')) {
             const accounted = newCnt + updatedCnt + existingCnt + dupCnt + invalidCnt;
@@ -8453,8 +8619,8 @@
 
           applyPreviewFilter(activeValFilter || 'all');
 
-          // Submit Button Control: new entries are added, changed existing entries are updated, identical ones are left alone.
-          const eligibleTotal = eligibleToAdd + eligibleToUpdate;
+          // Submit Button Control: new entries are added, changed existing entries are updated, errored entries saved to Errored Entries DB.
+          const eligibleTotal = eligibleToAdd + eligibleToUpdate + invalidCnt;
           if ($('btnRectifyCountBadge')) $('btnRectifyCountBadge').textContent = eligibleToUpdate.toLocaleString();
           if ($('btnRectifyUpdate')) $('btnRectifyUpdate').hidden = eligibleToUpdate === 0;
           if ($('btnCheckEntriesModal')) $('btnCheckEntriesModal').hidden = false;
@@ -8462,7 +8628,7 @@
             if ($('btnConfirmUpload')) {
               $('btnConfirmUpload').disabled = false;
               $('btnConfirmUpload').hidden = false;
-              $('btnConfirmUpload').innerHTML = `<span>🚀</span> <span>Confirm & Upload: Add ${newCnt.toLocaleString()} New${invalidCnt ? ` + ${invalidCnt.toLocaleString()} Invalid (as is)` : ''}, Update ${eligibleToUpdate.toLocaleString()} Changed (Unchanged Left As Is)</span>`;
+              $('btnConfirmUpload').innerHTML = `<span>🚀</span> <span>Confirm & Upload: Add ${newCnt.toLocaleString()} New, Update ${eligibleToUpdate.toLocaleString()} Changed${invalidCnt ? `, Save ${invalidCnt.toLocaleString()} Errored Entries` : ''}</span>`;
             }
             if ($('msgNoEligibleUpload')) $('msgNoEligibleUpload').hidden = true;
           } else {
@@ -8474,7 +8640,7 @@
               $('msgNoEligibleUpload').hidden = false;
               $('msgNoEligibleUpload').innerHTML = `
                   <span style="font-size:20px">⚠️</span>
-                  <span><b>Nothing to add or update.</b> All entries are either duplicate conflicts, invalid, or already identical to the database.</span>
+                  <span><b>Nothing to add or update.</b> All entries are either duplicate conflicts or already identical to the database.</span>
                 `;
             }
           }
@@ -8568,19 +8734,23 @@
         // What happens to each row was decided by the validation (whole file, whole database, recycle bin included).
         const st = activeValResult.rowStatus;
         const why = activeValResult.rowReasons || new Map();
-        const FALLBACK_WHY = { E: 'Already exists in database with identical values', D: 'Duplicate entry', I: 'Invalid entry', U: 'Already exists in database (values differ)' };
-        const validRowsToUpload = [];     // N: not in the database yet -> inserted
+        const FALLBACK_WHY = { E: 'Already exists in database with identical values', D: 'Duplicate entry', I: 'Errored entry', U: 'Already exists in database (values differ)' };
+        const validRowsToUpload = [];     // N: not in the database yet -> inserted into sim_devices
         const rowsToUpdate = [];          // U: in the database, some values differ -> only those values are replaced
-        const duplicatesToStage = [];
+        const duplicatesToStage = [];     // Errored entries (I) + duplicates/skipped -> saved into sim_errored_records
         let duplicateRecordsSkipped = 0;
 
         parsedRows.forEach((r, idx) => {
           if (stagedImproperIndices.has(idx)) {
             duplicateRecordsSkipped++;
-            return; // Already staged to Errored Entries via modal; do NOT insert to database
+            return; // Already staged to Errored Entries via modal; do NOT insert to sim_devices
           }
-          if ((st[idx] === 'N' || st[idx] === 'I') && policy === 'update') { duplicateRecordsSkipped++; return; }   // update-only: never add
-          if (st[idx] === 'N' || st[idx] === 'I') {   // Invalid rows are uploaded as they are; only duplicates are held back
+          if (r._savedErrorId && st[idx] === 'I') {
+            duplicateRecordsSkipped++;
+            return; // Already saved/edited in Errored Entries database table
+          }
+          if (st[idx] === 'N' && policy === 'update') { duplicateRecordsSkipped++; return; }   // update-only: never add
+          if (st[idx] === 'N') {
             const rowCopy = Object.assign({}, r);
             if (!rowCopy.customer_name || !String(rowCopy.customer_name).trim()) rowCopy.customer_name = 'General_Customer';
             const cleanImei = String(rowCopy.imei || '').replace(/[^0-9A-Za-z_-]/g, '');
@@ -8605,7 +8775,7 @@
             act_date: r.act_date || null, expiry_date: r.expiry_date || null, dispatched_date: r.dispatched_date || null,
             model: r.model || '', sim_provider: r.sim_provider || '', activation_plan: r.activation_plan || '',
             firmware: r.firmware || '', flash: r.flash || '', sim_type: r.sim_type || '',
-            extra: r.extra || null, error_reason: why.get(idx) || FALLBACK_WHY[st[idx]] || 'Not uploaded'
+            extra: r.extra || null, error_reason: why.get(idx) || FALLBACK_WHY[st[idx]] || 'Errored entry'
           });
         });
         const workTotal = validRowsToUpload.length + rowsToUpdate.length;   // everything that goes to the server
@@ -8697,21 +8867,23 @@
         if (logBox) logBox.innerHTML = '';
         addLog(`Starting upload: ${validRowsToUpload.length.toLocaleString()} new entries to add, ${rowsToUpdate.length.toLocaleString()} existing entries with changed values to update, ${duplicatesToStage.length.toLocaleString()} rows left alone (duplicates / identical to database / invalid).`);
 
-        // Stage duplicate error entries to Errored Entries container
+        // Stage errored entries & left-alone rows to Errored Entries container in database
         if (duplicatesToStage.length > 0) {
-          addLog(`Staging ${duplicatesToStage.length.toLocaleString()} left-alone records to Errored Entries container…`);
+          addLog(`Saving ${duplicatesToStage.length.toLocaleString()} errored / left-alone entries to Errored Entries database table…`);
           setStep(1, 'run');
-          if ($('progStatus')) $('progStatus').textContent = `Step 1 of 4: saving ${duplicatesToStage.length.toLocaleString()} left-alone rows to Errored Entries…`;
+          if ($('progStatus')) $('progStatus').textContent = `Step 1 of 4: saving ${duplicatesToStage.length.toLocaleString()} errored / left-alone entries to database…`;
           try {
-            await api('/api/errors', {
-              method: 'POST',
-              body: JSON.stringify({ records: duplicatesToStage })
-            });
-            addLog(`Duplicate records staged successfully.`);
+            for (let k = 0; k < duplicatesToStage.length; k += 1000) {
+              await api('/api/errors', {
+                method: 'POST',
+                body: JSON.stringify({ records: duplicatesToStage.slice(k, k + 1000) })
+              });
+            }
+            addLog(`Errored entries saved to database successfully.`);
             setStep(1, 'done');
           } catch (errPost) {
-            console.warn('Could not stage duplicate errored records:', errPost);
-            addLog(`Notice: Duplicate staging: ${errPost.message}`);
+            console.warn('Could not stage errored records:', errPost);
+            addLog(`Notice: Errored entries save: ${errPost.message}`);
             setStep(1, 'fail');
           }
         } else {
@@ -8981,6 +9153,7 @@
           await loadCU(); await updateChrome();
           loadCustomerFilesContainer();
           fetchInventoryRows();
+          if (typeof window._loadBulkSavedErrors === 'function') await window._loadBulkSavedErrors();
           if ($('invCustCountBadge')) $('invCustCountBadge').textContent = CU.length;
 
           if (duplicatesToStage.length > 0) {
@@ -8988,9 +9161,16 @@
           <div style="background:var(--ok-bg);border:1px solid var(--ok);padding:12px;border-radius:8px;margin-bottom:12px">
             <b>${addedTotal}</b> new records were added and <b>${updatedTotal}</b> existing records had their changed values updated.
           </div>
-          <p><b>${duplicatesToStage.length}</b> rows (duplicates, identical to the database, or invalid) were left alone and saved into the <b>Errored / Invalid Entries</b> container.</p>
-          <p class="sub" style="margin:0">Only values that differed from your file were replaced; every other value of those records stayed as it was.</p>
+          <p><b>${duplicatesToStage.length}</b> errored / duplicate / left-alone rows were saved into the <b>Errored Entries</b> container in the database.</p>
+          <p class="sub" style="margin:0">You can review, edit, or delete them in the Errored Entries Tables Container below or on the Errored Entries page.</p>
         `;
+            if ($('btnGoToErrorsContainer')) {
+              $('btnGoToErrorsContainer').onclick = () => {
+                closeModal('dlgUploadErrorsAlert');
+                const card = document.getElementById('bulkSavedErrorsCard');
+                if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              };
+            }
             $('dlgUploadErrorsAlert').showModal();
           }
 
@@ -9014,6 +9194,696 @@
       }
 
       syncCustMode();
+
+      (function initBulkErroredEntriesManager() {
+        if (window._bulkErrManagerInit) {
+          if (typeof window._loadBulkSavedErrors === 'function') window._loadBulkSavedErrors();
+          return;
+        }
+        window._bulkErrManagerInit = true;
+        let _bulkSavedErrors = [];
+
+        const openBulkErrorEditor = (opts) => {
+          const dlg = document.getElementById('dlgEditBulkError');
+          if (!dlg) return;
+          const item = opts.item || {};
+          document.getElementById('bulkEditErrMode').value = opts.mode || 'db';
+          document.getElementById('bulkEditErrId').value = item.id || '';
+          document.getElementById('bulkEditErrRowIdx').value = (opts.rowIdx != null) ? String(opts.rowIdx) : '';
+          document.getElementById('dlgEditBulkErrorTitle').textContent = opts.mode === 'preview'
+            ? `✏️ Edit Errored Entry (Row #${(opts.rowIdx || 0) + 1})`
+            : `✏️ Edit Errored Entry #${item.id}`;
+          document.getElementById('bulkEditErrReason').textContent = item.error_reason || item.reason || 'Errored entry';
+          document.getElementById('bulkErrCustName').value = item.customer_name || '';
+          document.getElementById('bulkErrImei').value = item.imei || '';
+          document.getElementById('bulkErrDevSrNo').value = item.device_sr_no || '';
+          document.getElementById('bulkErrIccid').value = item.iccid || '';
+          document.getElementById('bulkErrMsisdn1').value = item.msisdn1 || '';
+          document.getElementById('bulkErrMsisdn2').value = item.msisdn2 || '';
+          document.getElementById('bulkErrActDate').value = item.act_date || '';
+          document.getElementById('bulkErrExpDate').value = item.expiry_date || '';
+          document.getElementById('bulkErrDispDate').value = item.dispatched_date || '';
+          document.getElementById('bulkErrModel').value = item.model || '';
+          document.getElementById('bulkErrSimProvider').value = item.sim_provider || '';
+          document.getElementById('bulkErrFirmware').value = item.firmware || '';
+          document.getElementById('bulkErrFlash').value = item.flash || '';
+          document.getElementById('bulkErrSimType').value = item.sim_type || '';
+          document.getElementById('bulkEditErrMsg').textContent = '';
+
+          const upBtn = document.getElementById('btnUploadBulkErrToCust');
+          if (upBtn) upBtn.hidden = (opts.mode !== 'db');
+          const saveBtn = document.getElementById('btnSaveBulkErrEdit');
+          if (saveBtn) saveBtn.textContent = opts.mode === 'preview' ? '💾 Save Edit & Update DB' : '💾 Save to Database';
+          dlg.showModal();
+        };
+
+        const loadBulkSavedErrors = async () => {
+          const wrap = document.getElementById('bulkSavedErrorsWrap');
+          const badge = document.getElementById('bulkErrTotalBadge');
+          if (!wrap) return;
+          const q = (document.getElementById('bulkErrSearch') ? document.getElementById('bulkErrSearch').value : '').trim();
+          try {
+            const [rows, sum] = await Promise.all([
+              api('/api/errors?limit=200' + (q ? '&q=' + encodeURIComponent(q) : '')),
+              api('/api/errors/summary').catch(() => null)
+            ]);
+            _bulkSavedErrors = Array.isArray(rows) ? rows : [];
+            const totalDb = (sum && typeof sum.total === 'number') ? sum.total : _bulkSavedErrors.length;
+            if (badge) badge.textContent = `${Number(totalDb).toLocaleString()} in DB`;
+            if (!_bulkSavedErrors.length) {
+              wrap.innerHTML = `<div class="empty" style="padding:24px">No errored entries stored in the database${q ? ' matching "' + esc(q) + '"' : ''}.</div>`;
+              return;
+            }
+            wrap.innerHTML = `
+              <table class="data-table" style="font-size:12px;margin:0;width:100%">
+                <thead>
+                  <tr style="background:var(--card-subtle)">
+                    <th>ID</th>
+                    <th>Classification</th>
+                    <th>Customer</th>
+                    <th>IMEI</th>
+                    <th>ICCID</th>
+                    <th>Error Reason</th>
+                    <th>Staged Date</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${_bulkSavedErrors.map(err => `
+                    <tr>
+                      <td><b>#${err.id}</b></td>
+                      <td><span class="tag bad" style="font-size:11px;font-weight:700;white-space:nowrap">⚠️ Errored Entry</span></td>
+                      <td><b>${esc(err.customer_name || '—')}</b></td>
+                      <td><code>${esc(err.imei || '—')}</code></td>
+                      <td><code>${esc(err.iccid || '—')}</code></td>
+                      <td style="color:var(--danger);max-width:260px">${esc(err.error_reason || 'Invalid entry')}</td>
+                      <td style="white-space:nowrap">${err.created_at ? new Date(err.created_at).toLocaleDateString() : '—'}</td>
+                      <td>
+                        <div style="display:flex;gap:6px;white-space:nowrap">
+                          <button type="button" class="b" data-bulkerr-edit="${err.id}" style="height:26px;padding:0 8px;font-size:11px;font-weight:700">✏️ Edit</button>
+                          <button type="button" class="b d" data-bulkerr-cart="${err.id}" style="height:26px;padding:0 8px;font-size:11px;font-weight:700">🗑️ Cart</button>
+                          <button type="button" class="b d" data-bulkerr-del="${err.id}" style="height:26px;padding:0 8px;font-size:11px;font-weight:700;background:#dc2626;color:#fff">❌ Delete</button>
+                        </div>
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            `;
+          } catch (e) {
+            wrap.innerHTML = `<div class="empty err">Could not load errored entries: ${esc(e.message)}</div>`;
+          }
+        };
+        window._loadBulkSavedErrors = loadBulkSavedErrors;
+
+        const valTbl = document.getElementById('valPreviewTable');
+        if (valTbl) {
+          valTbl.onclick = async (e) => {
+            const editBtn = e.target.closest('[data-valedit]');
+            if (editBtn) {
+              const rowIdx = parseInt(editBtn.dataset.valedit, 10);
+              const row = parsedRows[rowIdx];
+              if (!row) return;
+              const reason = (activeValResult && activeValResult.rowReasons && activeValResult.rowReasons.get(rowIdx)) || 'Errored entry';
+              openBulkErrorEditor({ mode: 'preview', rowIdx, item: Object.assign({}, row, { error_reason: reason }) });
+              return;
+            }
+            const delBtn = e.target.closest('[data-valdel]');
+            if (delBtn) {
+              const rowIdx = parseInt(delBtn.dataset.valdel, 10);
+              const row = parsedRows[rowIdx];
+              if (!row) return;
+              const ok = await cv.confirm(`Delete row #${rowIdx + 1} (IMEI: ${row.imei || '—'}) from this upload?`);
+              if (!ok) return;
+              parsedRows.splice(rowIdx, 1);
+              if (parsedRows.length) await validateAndPreview(parsedRows);
+              else {
+                $('valSummaryWrap').hidden = true;
+              }
+              showEventPopup({
+                type: 'deleting',
+                title: 'Entry Deleted',
+                message: `Row #${rowIdx + 1} (IMEI: ${row.imei || '—'}) has been removed from the upload batch.`,
+                meta: { 'Row': `#${rowIdx + 1}`, 'IMEI': row.imei || '—', 'Customer': row.customer_name || '—' }
+              });
+            }
+          };
+        }
+
+        const savedWrap = document.getElementById('bulkSavedErrorsWrap');
+        if (savedWrap) {
+          savedWrap.onclick = async (e) => {
+            const editBtn = e.target.closest('[data-bulkerr-edit]');
+            if (editBtn) {
+              const id = parseInt(editBtn.dataset.bulkerrEdit, 10);
+              const item = _bulkSavedErrors.find(x => x.id === id);
+              if (item) openBulkErrorEditor({ mode: 'db', item });
+              return;
+            }
+            const cartBtn = e.target.closest('[data-bulkerr-cart]');
+            if (cartBtn) {
+              const id = parseInt(cartBtn.dataset.bulkerrCart, 10);
+              if (!await cv.confirm(`Move errored entry #${id} to Cart?`)) return;
+              try {
+                await api(`/api/errors/${id}`, { method: 'DELETE' });
+                await loadBulkSavedErrors();
+                await syncGlobalMetricsAndChrome();
+                showEventPopup({
+                  type: 'deleting',
+                  title: 'Errored Entry Moved to Cart',
+                  message: `Errored entry #${id} was moved to Cart and saved into the database.`,
+                  meta: { 'Entry ID': `#${id}`, 'Database': 'Saved' }
+                });
+              } catch (err) { fail(err); }
+              return;
+            }
+            const delBtn = e.target.closest('[data-bulkerr-del]');
+            if (delBtn) {
+              const id = parseInt(delBtn.dataset.bulkerrDel, 10);
+              if (!await cv.confirm(`Permanently delete errored entry #${id} from the database?`)) return;
+              try {
+                await api(`/api/errors/${id}/permanent`, { method: 'DELETE' });
+                await loadBulkSavedErrors();
+                await syncGlobalMetricsAndChrome();
+                showEventPopup({
+                  type: 'deleting',
+                  title: 'Errored Entry Deleted',
+                  message: `Errored entry #${id} was permanently deleted from the database.`,
+                  meta: { 'Entry ID': `#${id}`, 'Database': 'Saved' }
+                });
+              } catch (err) { fail(err); }
+            }
+          };
+        }
+
+        const form = document.getElementById('formEditBulkError');
+        if (form) {
+          form.onsubmit = async (e) => {
+            e.preventDefault();
+            document.getElementById('bulkEditErrMsg').textContent = '';
+            const mode = document.getElementById('bulkEditErrMode').value;
+            const payload = {
+              customer_name: document.getElementById('bulkErrCustName').value.trim() || null,
+              imei: document.getElementById('bulkErrImei').value.trim() || null,
+              device_sr_no: document.getElementById('bulkErrDevSrNo').value.trim() || null,
+              iccid: document.getElementById('bulkErrIccid').value.trim() || null,
+              msisdn1: document.getElementById('bulkErrMsisdn1').value.trim() || null,
+              msisdn2: document.getElementById('bulkErrMsisdn2').value.trim() || null,
+              act_date: document.getElementById('bulkErrActDate').value || null,
+              expiry_date: document.getElementById('bulkErrExpDate').value || null,
+              dispatched_date: document.getElementById('bulkErrDispDate').value || null,
+              model: document.getElementById('bulkErrModel').value.trim() || null,
+              sim_provider: document.getElementById('bulkErrSimProvider').value.trim() || null,
+              firmware: document.getElementById('bulkErrFirmware').value.trim() || null,
+              flash: document.getElementById('bulkErrFlash').value.trim() || null,
+              sim_type: document.getElementById('bulkErrSimType').value || null,
+              error_reason: document.getElementById('bulkEditErrReason').textContent || 'Edited errored entry'
+            };
+
+            try {
+              if (mode === 'db') {
+                const id = document.getElementById('bulkEditErrId').value;
+                await api(`/api/errors/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+                closeModal('dlgEditBulkError');
+                await loadBulkSavedErrors();
+                await syncGlobalMetricsAndChrome();
+                showEventPopup({
+                  type: 'editing',
+                  title: 'Errored Entry Edited & Saved',
+                  message: `Errored entry #${id} changes were saved into the database.`,
+                  meta: { 'Entry ID': `#${id}`, 'Customer': payload.customer_name || '—', 'IMEI': payload.imei || '—', 'Database': 'Saved' }
+                });
+              } else {
+                const rowIdx = parseInt(document.getElementById('bulkEditErrRowIdx').value, 10);
+                const targetRow = parsedRows[rowIdx];
+                if (targetRow) {
+                  Object.assign(targetRow, payload);
+                  if (!targetRow.customer_name) targetRow.customer_name = 'General_Customer';
+                }
+                const errPayload = Object.assign({}, payload, { customer_name: payload.customer_name || 'General_Customer' });
+                if (targetRow && targetRow._savedErrorId) {
+                  await api(`/api/errors/${targetRow._savedErrorId}`, { method: 'PUT', body: JSON.stringify(errPayload) });
+                } else {
+                  const savedRes = await api('/api/errors', { method: 'POST', body: JSON.stringify({ records: [errPayload] }) });
+                  if (targetRow && savedRes && savedRes.saved_errors) targetRow._savedErrorId = true;
+                }
+                closeModal('dlgEditBulkError');
+                if (parsedRows.length) await validateAndPreview(parsedRows);
+                await loadBulkSavedErrors();
+                await syncGlobalMetricsAndChrome();
+                showEventPopup({
+                  type: 'editing',
+                  title: 'Errored Entry Edited & Saved',
+                  message: `Row #${rowIdx + 1} was edited and saved into the Errored Entries database table.`,
+                  meta: { 'Row': `#${rowIdx + 1}`, 'Customer': errPayload.customer_name, 'IMEI': payload.imei || '—', 'Database': 'Saved' }
+                });
+              }
+            } catch (err) {
+              document.getElementById('bulkEditErrMsg').textContent = err.message;
+            }
+          };
+        }
+
+        const btnUpCust = document.getElementById('btnUploadBulkErrToCust');
+        if (btnUpCust) {
+          btnUpCust.onclick = async () => {
+            const id = document.getElementById('bulkEditErrId').value;
+            const cname = document.getElementById('bulkErrCustName').value.trim() || 'General_Customer';
+            const imei = document.getElementById('bulkErrImei').value.trim();
+            if (!imei || imei.length < 5) {
+              document.getElementById('bulkEditErrMsg').textContent = 'Valid IMEI (at least 5 characters) is required to upload to customer.';
+              return;
+            }
+            const body = {
+              customer_name: cname,
+              imei: imei,
+              device_sr_no: document.getElementById('bulkErrDevSrNo').value.trim() || null,
+              iccid: document.getElementById('bulkErrIccid').value.trim() || null,
+              msisdn1: document.getElementById('bulkErrMsisdn1').value.trim() || null,
+              msisdn2: document.getElementById('bulkErrMsisdn2').value.trim() || null,
+              act_date: document.getElementById('bulkErrActDate').value || null,
+              expiry_date: document.getElementById('bulkErrExpDate').value || null,
+              dispatched_date: document.getElementById('bulkErrDispDate').value || null,
+              model: document.getElementById('bulkErrModel').value.trim() || null,
+              sim_provider: document.getElementById('bulkErrSimProvider').value.trim() || null,
+              firmware: document.getElementById('bulkErrFirmware').value.trim() || null,
+              flash: document.getElementById('bulkErrFlash').value.trim() || null,
+              sim_type: document.getElementById('bulkErrSimType').value || null
+            };
+            try {
+              await api(`/api/errors/${id}/upload`, { method: 'PUT', body: JSON.stringify(body) });
+              closeModal('dlgEditBulkError');
+              await loadBulkSavedErrors();
+              await loadCU();
+              await syncGlobalMetricsAndChrome();
+              loadCustomerFilesContainer();
+              fetchInventoryRows();
+              showEventPopup({
+                type: 'editing',
+                title: 'Errored Entry Uploaded to Customer',
+                message: `Entry #${id} was edited and uploaded to customer "${cname}" in the database.`,
+                meta: { 'IMEI': imei, 'Customer': cname, 'Database': 'Saved' }
+              });
+            } catch (err) {
+              document.getElementById('bulkEditErrMsg').textContent = err.message;
+            }
+          };
+        }
+
+        const errSearchInp = document.getElementById('bulkErrSearch');
+        if (errSearchInp) {
+          let tmr = null;
+          errSearchInp.oninput = () => { clearTimeout(tmr); tmr = setTimeout(loadBulkSavedErrors, 250); };
+        }
+        const errRefreshBtn = document.getElementById('btnRefreshBulkErrors');
+        if (errRefreshBtn) errRefreshBtn.onclick = loadBulkSavedErrors;
+
+        loadBulkSavedErrors();
+      })();
+
+      (async function initSimpleUploadOption() {
+        if (document.getElementById('btnSubSimple') || window._simpleUploadInitBusy) return;
+        window._simpleUploadInitBusy = true;
+        let status = null;
+        try {
+          status = await api('/api/devices/bulk/simple/status');
+        } catch (_e) {
+          window._simpleUploadInitBusy = false;
+          return;
+        }
+        window._simpleUploadInitBusy = false;
+        if (document.getElementById('btnSubSimple')) return;
+        if (!status || !status.available || !(status.remaining > 0)) return;
+
+        const subnav = document.querySelector('.inv-subnav');
+        const btnSubUpload = document.getElementById('btnSubUpload');
+        const btnCustBulk = document.getElementById('btnCustBulkUpload');
+        const btnDlTmpl = document.getElementById('btnDownloadUploadTemplate');
+        const uploadCard = document.querySelector('#subViewUpload > .card');
+        const custChooserCard = document.getElementById('uploadCustTypeGroup') ? document.getElementById('uploadCustTypeGroup').closest('.card') : null;
+        const sheetWrap = document.getElementById('sheetSelectWrap');
+        const validateRow = document.getElementById('btnValidateFile') ? document.getElementById('btnValidateFile').parentElement : null;
+        if (!subnav || !btnSubUpload || !uploadCard || !custChooserCard || !sheetWrap) return;
+
+        let btnSubSimple = document.createElement('button');
+        btnSubSimple.className = 'inv-sub-btn';
+        btnSubSimple.id = 'btnSubSimple';
+        btnSubSimple.dataset.sub = 'simple';
+        btnSubSimple.type = 'button';
+        btnSubSimple.style.cssText = btnSubUpload.getAttribute('style') || '';
+        btnSubSimple.innerHTML = `<span>⚡</span> <span>Simple Upload</span> <span class="badge" id="simpleRemainBadge" style="background:rgba(217,119,6,0.16);color:var(--warn);font-size:11px;padding:2px 7px;border-radius:99px;font-weight:800">${status.remaining} left</span>`;
+        btnSubUpload.insertAdjacentElement('afterend', btnSubSimple);
+
+        let btnCustSimple = null;
+        if (btnCustBulk && btnCustBulk.parentNode) {
+          btnCustSimple = document.createElement('button');
+          btnCustSimple.className = 'b p';
+          btnCustSimple.id = 'btnCustSimpleUpload';
+          btnCustSimple.type = 'button';
+          btnCustSimple.style.cssText = 'background:#059669;border-color:#059669;color:#fff;display:inline-flex;align-items:center;gap:6px;font-weight:600';
+          btnCustSimple.innerHTML = `<span>⚡</span> <span>Simple Upload</span>`;
+          btnCustBulk.insertAdjacentElement('afterend', btnCustSimple);
+          btnCustSimple.onclick = () => switchInvSubView('simple');
+        }
+
+        let btnUploadSimpleSwitch = null;
+        if (btnDlTmpl && btnDlTmpl.parentNode) {
+          btnUploadSimpleSwitch = document.createElement('button');
+          btnUploadSimpleSwitch.className = 'b p';
+          btnUploadSimpleSwitch.id = 'btnUploadSimpleSwitch';
+          btnUploadSimpleSwitch.type = 'button';
+          btnUploadSimpleSwitch.style.cssText = 'display:inline-flex;align-items:center;gap:6px;font-weight:700;padding:8px 16px;border-radius:8px;background:#059669;border:1.5px solid #059669;color:#fff;cursor:pointer';
+          btnUploadSimpleSwitch.innerHTML = `<span>⚡</span> <span>Simple Upload (<span id="simpleBtnRemain">${status.remaining}</span> left)</span>`;
+          btnDlTmpl.parentNode.appendChild(btnUploadSimpleSwitch);
+          btnUploadSimpleSwitch.onclick = () => switchInvSubView(window._simpleUploadMode ? 'upload' : 'simple');
+        }
+
+        let simpleHeaderBanner = document.createElement('div');
+        simpleHeaderBanner.id = 'simpleHeaderBanner';
+        simpleHeaderBanner.className = 'card';
+        simpleHeaderBanner.hidden = true;
+        simpleHeaderBanner.style.cssText = 'padding:12px 16px;border:1.5px solid #10b981;background:rgba(16,185,129,0.08);border-radius:10px;margin:10px 0 14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px';
+        simpleHeaderBanner.innerHTML = `
+          <div>
+            <div style="font-weight:800;font-size:14px;color:var(--ink)">⚡ Simple Upload Mode</div>
+            <div class="sub" style="font-size:12px;margin-top:2px">Excludes duplicates automatically and pushes all remaining entries (including errored entries) directly to the database and customer portfolios.</div>
+          </div>
+          <span class="badge" id="simpleBannerRemain" style="background:#059669;color:#fff;font-size:12px;padding:4px 10px;border-radius:99px;font-weight:800">${status.remaining} of 3 uploads remaining</span>
+        `;
+        uploadCard.insertBefore(simpleHeaderBanner, custChooserCard);
+
+        let simpleActionBar = document.createElement('div');
+        simpleActionBar.id = 'simpleActionBar';
+        simpleActionBar.hidden = true;
+        simpleActionBar.style.cssText = 'margin-top:14px;padding-top:12px;border-top:1px dashed var(--line);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px';
+        simpleActionBar.innerHTML = `
+          <div>
+            <div style="font-weight:700;font-size:13.5px;color:var(--ink)">⚡ Simple Upload Ready</div>
+            <div class="sub" style="font-size:12px;margin-top:2px">Duplicates are excluded automatically; all other rows (including errored entries) are pushed directly into the database.</div>
+          </div>
+          <button class="b p" id="btnRunSimpleUpload" type="button"
+            style="font-size:14px;font-weight:800;padding:10px 24px;border-radius:8px;background:linear-gradient(135deg, #10b981, #059669);color:#fff;display:inline-flex;align-items:center;gap:8px;box-shadow:0 3px 12px rgba(16,185,129,0.25);cursor:pointer">
+            <span>🚀</span> <span>Push Now (Simple Upload)</span>
+          </button>
+        `;
+        sheetWrap.appendChild(simpleActionBar);
+
+        const setSimpleMode = (enabled) => {
+          window._simpleUploadMode = !!enabled;
+          if (simpleHeaderBanner) simpleHeaderBanner.hidden = !enabled;
+          if (document.getElementById('uploadPolicyCard')) document.getElementById('uploadPolicyCard').hidden = enabled;
+          if (validateRow) validateRow.hidden = enabled;
+          if (enabled && document.getElementById('valSummaryWrap')) document.getElementById('valSummaryWrap').hidden = true;
+          if (simpleActionBar) simpleActionBar.hidden = !enabled || sheetWrap.hidden;
+          if (btnUploadSimpleSwitch) {
+            btnUploadSimpleSwitch.innerHTML = enabled
+              ? `<span>📤</span> <span>Back to Standard Upload</span>`
+              : `<span>⚡</span> <span>Simple Upload (<span id="simpleBtnRemain">${status.remaining}</span> left)</span>`;
+          }
+        };
+        window._setSimpleUploadMode = setSimpleMode;
+
+        btnSubSimple.onclick = () => switchInvSubView('simple');
+        if (currentInvSubView === 'simple') setSimpleMode(true);
+
+        const updateRemainLabels = (rem) => {
+          status.remaining = rem;
+          if (document.getElementById('simpleRemainBadge')) document.getElementById('simpleRemainBadge').textContent = `${rem} left`;
+          if (document.getElementById('simpleBannerRemain')) document.getElementById('simpleBannerRemain').textContent = `${rem} of 3 uploads remaining`;
+          if (document.getElementById('simpleBtnRemain')) document.getElementById('simpleBtnRemain').textContent = `${rem}`;
+        };
+
+        const destroySimpleUploadUI = () => {
+          window._simpleUploadMode = false;
+          window._setSimpleUploadMode = null;
+          if (btnSubSimple && btnSubSimple.parentNode) btnSubSimple.remove();
+          if (btnCustSimple && btnCustSimple.parentNode) btnCustSimple.remove();
+          if (btnUploadSimpleSwitch && btnUploadSimpleSwitch.parentNode) btnUploadSimpleSwitch.remove();
+          if (simpleHeaderBanner && simpleHeaderBanner.parentNode) simpleHeaderBanner.remove();
+          if (simpleActionBar && simpleActionBar.parentNode) simpleActionBar.remove();
+          btnSubSimple = null;
+          btnCustSimple = null;
+          btnUploadSimpleSwitch = null;
+          simpleHeaderBanner = null;
+          simpleActionBar = null;
+          if (document.getElementById('uploadPolicyCard')) document.getElementById('uploadPolicyCard').hidden = false;
+          if (validateRow) validateRow.hidden = false;
+          if (currentInvSubView === 'simple') {
+            currentInvSubView = 'upload';
+            document.querySelectorAll('.inv-sub-btn').forEach(b => b.classList.toggle('active', b.dataset.sub === 'upload'));
+          }
+        };
+
+        const executeSimpleUpload = async () => {
+          if (window._bulkUploadBusy) return;
+          if (!window._collectSimpleRows) {
+            toast('⚠️ Please select an Excel file first.');
+            return;
+          }
+          const collected = window._collectSimpleRows();
+          if (!collected || !collected.allRows.length) {
+            toast('⚠️ No data rows found in selected worksheets.');
+            return;
+          }
+
+          window._bulkUploadBusy = true;
+          const btnRun = $('btnRunSimpleUpload');
+          if (btnRun) btnRun.disabled = true;
+
+          const allRows = collected.allRows;
+          const nk = v => String(v ?? '').trim().replace(/\.0+$/, '').toLowerCase();
+          const nIccid = v => nk(v).replace(/[\s\-_]+/g, '');
+          const seenIccid = new Set(), seenImei = new Set(), seenSr = new Set();
+          const rowsToPush = [];
+          let inFileDuplicates = 0;
+
+          allRows.forEach(r => {
+            const rawIccid = String(r.iccid || '').trim();
+            const rawImei = String(r.imei || '').trim();
+            const rawSr = String(r.device_sr_no || '').trim();
+            const kc = nIccid(rawIccid);
+            const ki = nk(rawImei);
+            const ks = nk(rawSr);
+            const isDup = (kc && seenIccid.has(kc)) || (ki && seenImei.has(ki)) || (ks && seenSr.has(ks));
+            if (isDup) {
+              inFileDuplicates++;
+              return;
+            }
+            if (kc) seenIccid.add(kc);
+            if (ki) seenImei.add(ki);
+            if (ks) seenSr.add(ks);
+            const copy = Object.assign({}, r);
+            if (!copy.customer_name || !String(copy.customer_name).trim()) copy.customer_name = 'General_Customer';
+            rowsToPush.push(copy);
+          });
+
+          let runId = null;
+          let finishRes = null;
+          try {
+            const startRes = await api('/api/devices/bulk/simple/start', { method: 'POST' });
+            runId = startRes.run_id;
+
+            $('uploadProgressWrap').hidden = false;
+            if ($('progCompleteBanner')) $('progCompleteBanner').hidden = true;
+            if ($('progTotalCount')) $('progTotalCount').textContent = allRows.length.toLocaleString();
+            if ($('progAddedCount')) $('progAddedCount').textContent = '0';
+            if ($('progAddedOf')) $('progAddedOf').textContent = `of ${rowsToPush.length.toLocaleString()}`;
+            if ($('progUpdatedCount')) $('progUpdatedCount').textContent = '0';
+            if ($('progUpdatedOf')) $('progUpdatedOf').textContent = '';
+            if ($('progDupCount')) $('progDupCount').textContent = inFileDuplicates.toLocaleString();
+            if ($('progFailedCount')) $('progFailedCount').textContent = '0';
+            if ($('progBar')) {
+              $('progBar').style.width = '0%';
+              $('progBar').style.background = 'linear-gradient(90deg, #10b981, #38bdf8)';
+            }
+            if ($('progPct')) $('progPct').textContent = '0%';
+            if ($('progRowsCount')) $('progRowsCount').textContent = `0 / ${rowsToPush.length.toLocaleString()} records`;
+            if ($('progTitle')) $('progTitle').textContent = 'Uploading Data Directly to Database…';
+            if ($('progSpinIcon')) { $('progSpinIcon').textContent = '⏳'; $('progSpinIcon').classList.add('spin'); }
+            if ($('progStatus')) $('progStatus').textContent = `Excluding duplicates and pushing ${rowsToPush.length.toLocaleString()} records…`;
+
+            const STEP_STYLE = {
+              wait: 'opacity:.55',
+              run: 'background:#2563eb;color:#fff;opacity:1',
+              done: 'background:var(--ok);color:#fff;opacity:1',
+              skip: 'opacity:.4;text-decoration:line-through',
+              fail: 'background:var(--danger);color:#fff;opacity:1'
+            };
+            const setStep = (n, state) => { const el = $('progStep' + n); if (el) el.setAttribute('style', STEP_STYLE[state] || ''); };
+            if ($('progStep1')) $('progStep1').textContent = '① Excluding duplicates';
+            if ($('progStep2')) $('progStep2').textContent = '② Pushing records directly to DB';
+            if ($('progStep3')) $('progStep3').textContent = '③ Syncing customer tables';
+            if ($('progStep4')) $('progStep4').textContent = '④ Finalising';
+            [1, 2, 3, 4].forEach(n => setStep(n, 'wait'));
+            setStep(1, 'done');
+            setStep(2, rowsToPush.length ? 'run' : 'skip');
+
+            const newEntriesTableBox = $('progNewEntriesTable');
+            let renderedCnt = 0;
+            if (newEntriesTableBox) {
+              newEntriesTableBox.innerHTML = `
+                <table class="data-table" style="font-size:12px;margin:0;width:100%">
+                  <thead>
+                    <tr style="background:var(--card-subtle)">
+                      <th style="width:45px">#</th>
+                      <th style="width:110px">Status</th>
+                      <th>Customer Name</th>
+                      <th>IMEI</th>
+                      <th>Device Sr No</th>
+                      <th>ICCID</th>
+                      <th>SIM Type</th>
+                      <th>Model</th>
+                    </tr>
+                  </thead>
+                  <tbody id="progNewTbody"></tbody>
+                </table>
+              `;
+            }
+            if ($('progNewEntriesCount')) $('progNewEntriesCount').textContent = `0 / ${rowsToPush.length.toLocaleString()} records`;
+
+            const logBox = $('progLiveDetailBox');
+            const addLog = msg => {
+              if (!logBox) return;
+              const div = document.createElement('div');
+              div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+              logBox.appendChild(div);
+              logBox.scrollTop = logBox.scrollHeight;
+            };
+            if (logBox) logBox.innerHTML = '';
+            addLog(`Scanned ${allRows.length.toLocaleString()} rows (${inFileDuplicates.toLocaleString()} in-file duplicates excluded, ${rowsToPush.length.toLocaleString()} queued for direct DB push).`);
+
+            let addedTotal = 0, dupTotal = inFileDuplicates, failedTotal = 0;
+            const chunkSize = 500;
+            showBstplLoader(`Uploading ${rowsToPush.length.toLocaleString()} records directly to database…`, 0);
+
+            for (let i = 0; i < rowsToPush.length; i += chunkSize) {
+              const chunk = rowsToPush.slice(i, i + chunkSize);
+              const chunkNum = Math.floor(i / chunkSize) + 1;
+              const totalChunks = Math.ceil(rowsToPush.length / chunkSize);
+              const pct = rowsToPush.length ? Math.min(99, Math.round((i / rowsToPush.length) * 100)) : 100;
+              if ($('progBar')) $('progBar').style.width = pct + '%';
+              if ($('progPct')) $('progPct').textContent = pct + '%';
+              if ($('progRowsCount')) $('progRowsCount').textContent = `${i.toLocaleString()} / ${rowsToPush.length.toLocaleString()} records`;
+              if ($('progStatus')) $('progStatus').textContent = `Pushing batch ${chunkNum} of ${totalChunks} directly to database…`;
+              updateBstplLoader(`Uploading records directly to database: ${i.toLocaleString()} / ${rowsToPush.length.toLocaleString()} (${pct}%)…`, pct);
+
+              const r = await api('/api/devices/bulk/simple/batch', {
+                method: 'POST',
+                body: JSON.stringify({ run_id: runId, rows: chunk })
+              });
+              addedTotal += (r.added || 0);
+              dupTotal += (r.excluded_duplicates || 0);
+              failedTotal += (r.failed || 0);
+
+              if ($('progAddedCount')) $('progAddedCount').textContent = addedTotal.toLocaleString();
+              if ($('progDupCount')) $('progDupCount').textContent = dupTotal.toLocaleString();
+              if ($('progFailedCount')) $('progFailedCount').textContent = failedTotal.toLocaleString();
+
+              const tbody = $('progNewTbody');
+              if (tbody && (r.added || 0) > 0) {
+                chunk.slice(0, 150).forEach(item => {
+                  renderedCnt++;
+                  if (renderedCnt > 500) return;
+                  const tr = document.createElement('tr');
+                  tr.innerHTML = `
+                    <td>${renderedCnt}</td>
+                    <td><span class="badge" style="background:var(--ok);color:#fff;font-weight:700;padding:2px 7px;border-radius:4px">✨ Pushed</span></td>
+                    <td><b>${esc(item.customer_name || '—')}</b></td>
+                    <td><code><b>${esc(item.imei || '—')}</b></code></td>
+                    <td><code>${esc(item.device_sr_no || '—')}</code></td>
+                    <td><code>${esc(item.iccid || '—')}</code></td>
+                    <td><span class="badge" style="background:${item.sim_type === 'E-SIM' ? '#38bdf8' : '#a855f7'};color:#fff">${esc(item.sim_type || '—')}</span></td>
+                    <td>${esc(item.model || '—')}</td>
+                  `;
+                  tbody.appendChild(tr);
+                });
+                if (newEntriesTableBox) newEntriesTableBox.scrollTop = newEntriesTableBox.scrollHeight;
+                if ($('progNewEntriesCount')) $('progNewEntriesCount').textContent = `${addedTotal.toLocaleString()} / ${rowsToPush.length.toLocaleString()} pushed`;
+              }
+              addLog(`Batch ${chunkNum}/${totalChunks}: ${r.added || 0} pushed to DB, ${r.excluded_duplicates || 0} duplicates excluded${r.failed ? `, ${r.failed} failed` : ''}.`);
+              await new Promise(res => setTimeout(res, 30));
+            }
+
+            setStep(2, failedTotal ? 'fail' : 'done');
+            setStep(3, 'done');
+            setStep(4, 'run');
+
+            finishRes = await api('/api/devices/bulk/simple/finish', {
+              method: 'POST',
+              body: JSON.stringify({ run_id: runId })
+            });
+
+            if ($('progBar')) $('progBar').style.width = '100%';
+            if ($('progPct')) $('progPct').textContent = '100%';
+            if ($('progRowsCount')) $('progRowsCount').textContent = `${rowsToPush.length.toLocaleString()} / ${rowsToPush.length.toLocaleString()} records`;
+            if ($('progSpinIcon')) { $('progSpinIcon').classList.remove('spin'); $('progSpinIcon').textContent = failedTotal ? '⚠️' : '✅'; }
+            if ($('progTitle')) $('progTitle').textContent = failedTotal ? 'Upload Finished With Some Failures' : 'Upload Completed Successfully';
+            if ($('progStatus')) $('progStatus').textContent = `Done: ${addedTotal.toLocaleString()} records pushed to database, ${dupTotal.toLocaleString()} duplicates excluded.`;
+            setStep(4, 'done');
+
+            const custBreakdown = {};
+            rowsToPush.forEach(r => {
+              const cn = r.customer_name || 'General_Customer';
+              custBreakdown[cn] = (custBreakdown[cn] || 0) + 1;
+            });
+            const breakdownHtml = Object.entries(custBreakdown).map(([cname, cnt]) => `<li><b>${esc(cname)}</b>: ${cnt.toLocaleString()} rows processed</li>`).join('');
+
+            if ($('progCompleteBanner')) {
+              $('progCompleteBanner').hidden = false;
+              if ($('progCompleteSummary')) {
+                $('progCompleteSummary').innerHTML = `
+                  <div style="margin-bottom:10px">
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(190px, 1fr));gap:8px;margin-top:6px">
+                      <div>• <b>Total Scanned:</b> ${allRows.length.toLocaleString()}</div>
+                      <div>• <b>Pushed to Database:</b> <span style="color:var(--ok);font-weight:700">${addedTotal.toLocaleString()}</span></div>
+                      <div>• <b>Duplicates Excluded:</b> ${dupTotal.toLocaleString()}</div>
+                      <div>• <b>Failed:</b> ${failedTotal.toLocaleString()}</div>
+                    </div>
+                  </div>
+                  <b>Customers Processed:</b>
+                  <ul style="margin:6px 0 0;padding-left:20px;font-size:12.5px">${breakdownHtml}</ul>
+                `;
+              }
+            }
+
+            addLog(`✅ Upload complete: ${addedTotal.toLocaleString()} pushed directly to database, ${dupTotal.toLocaleString()} duplicates excluded.`);
+            toast(`Upload complete! ${addedTotal.toLocaleString()} records pushed, ${dupTotal.toLocaleString()} duplicates excluded.`);
+
+            await loadCU();
+            await updateChrome();
+            loadCustomerFilesContainer();
+            fetchInventoryRows();
+            if (window.refreshUploadCustDropdown) window.refreshUploadCustDropdown();
+            if ($('invCustCountBadge')) $('invCustCountBadge').textContent = CU.length;
+            if ($('wbFile')) $('wbFile').value = '';
+
+            if (!finishRes || finishRes.purged || !(finishRes.remaining > 0)) {
+              destroySimpleUploadUI();
+            } else {
+              updateRemainLabels(finishRes.remaining);
+            }
+            try { $('uploadProgressWrap').scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) { }
+          } catch (err) {
+            fail(err);
+            if ($('progStatus')) $('progStatus').textContent = 'Upload error: ' + err.message;
+            if ($('progTitle')) $('progTitle').textContent = 'Upload Stopped — Error';
+            if ($('progSpinIcon')) { $('progSpinIcon').classList.remove('spin'); $('progSpinIcon').textContent = '❌'; }
+            if (runId && !finishRes) {
+              try {
+                const fr = await api('/api/devices/bulk/simple/finish', { method: 'POST', body: JSON.stringify({ run_id: runId }) });
+                if (!fr || fr.purged || !(fr.remaining > 0)) destroySimpleUploadUI();
+                else updateRemainLabels(fr.remaining);
+              } catch (_e) { }
+            }
+          } finally {
+            window._bulkUploadBusy = false;
+            if ($('btnRunSimpleUpload')) $('btnRunSimpleUpload').disabled = false;
+            hideBstplLoader();
+          }
+        };
+
+        $('btnRunSimpleUpload').onclick = executeSimpleUpload;
+      })();
     }
 
 

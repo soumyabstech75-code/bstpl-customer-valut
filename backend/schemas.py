@@ -266,6 +266,15 @@ class BulkIn(BaseModel):
     direct_empty: Optional[bool] = False
 
 
+class SimpleUploadBatchIn(BaseModel):
+    run_id: str = Field(min_length=1, max_length=64)
+    rows: list[DeviceIn] = Field(max_length=500000)
+
+
+class SimpleUploadRunIn(BaseModel):
+    run_id: str = Field(min_length=1, max_length=64)
+
+
 
 class BulkFetchIn(BaseModel):
     queries: list[str] = Field(max_length=500000)
