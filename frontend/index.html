@@ -1204,7 +1204,16 @@
 
   <!-- WHAT IS HAPPENING BELOW: Client-side Authentication, Session Validation & Form Submission Handling -->
   <script>
-    const API_BASE = window.location.origin;
+    const RENDER_BACKEND_URL = 'https://customer-vault-bstpl.onrender.com';
+    const API_BASE = (() => {
+      const override = window.API_BASE || window.API_URL || localStorage.getItem('API_BASE') || localStorage.getItem('API_URL');
+      if (override) return override.replace(/\/+$/, '');
+      const h = window.location.hostname;
+      if (window.location.protocol === 'file:' || h === 'localhost' || h === '127.0.0.1') {
+        return window.location.port === '8000' ? window.location.origin : 'http://127.0.0.1:8000';
+      }
+      return h.endsWith('onrender.com') ? window.location.origin : RENDER_BACKEND_URL;
+    })();
     let authMode = 'login';
 
     const $ = id => document.getElementById(id);

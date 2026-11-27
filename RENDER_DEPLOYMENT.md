@@ -94,14 +94,14 @@ In your Render Web Service dashboard, go to the **Environment** tab and add the 
 
 ### 1. Unified (Default & Simplest)
 Because FastAPI is configured to serve the `frontend/` directory, Render serves **BOTH** your frontend and backend on the same URL:
-- Opening `https://bstpl-customervalut-6-g6a8.onrender.com/` opens the dashboard.
-- Opening `https://bstpl-customervalut-6-g6a8.onrender.com/health` checks general health.
-- Opening `https://bstpl-customervalut-6-g6a8.onrender.com/health/db` checks the database health.
-- Opening `https://bstpl-customervalut-6-g6a8.onrender.com/docs` opens the Swagger API documentation.
-- Opening `https://bstpl-customervalut-6-g6a8.onrender.com/api/sensorise/status` checks Sensorise SenseLCM status.
+- Opening `https://customer-vault-bstpl.onrender.com/` opens the dashboard.
+- Opening `https://customer-vault-bstpl.onrender.com/health` checks general health.
+- Opening `https://customer-vault-bstpl.onrender.com/health/db` checks the database health.
+- Opening `https://customer-vault-bstpl.onrender.com/docs` opens the Swagger API documentation.
+- Opening `https://customer-vault-bstpl.onrender.com/api/sensorise/status` checks Sensorise SenseLCM status.
 
 ### 2. Frontend Hosted Separately
 If you prefer to host `frontend/` on Netlify or GitHub Pages:
 - In `frontend/index.html` (or in browser console):
-  `localStorage.setItem('API_URL', 'https://bstpl-customervalut-6-g6a8.onrender.com')`
+  `localStorage.setItem('API_URL', 'https://customer-vault-bstpl.onrender.com')`
 - The backend's CORS is pre-configured to accept requests from your external frontend!

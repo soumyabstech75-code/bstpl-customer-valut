@@ -2843,8 +2843,8 @@
               </div>
             </div>
             <div style="display:flex;align-items:center;gap:6px">
-              <button type="button" class="b" onclick="copySensoriseUrl(window.location.origin + '/docs#/Sensorise', 'API Docs URL')" style="font-size:11.5px;padding:4px 10px;border-radius:7px">📋 Copy</button>
-              <a href="/docs#/Sensorise" target="_blank" rel="noopener noreferrer" class="b" style="font-size:11.5px;padding:4px 10px;border-radius:7px;text-decoration:none;display:inline-flex;align-items:center;gap:4px">📖 Open Docs</a>
+              <button type="button" class="b" onclick="copySensoriseUrl(API_BASE + '/docs#/Sensorise', 'API Docs URL')" style="font-size:11.5px;padding:4px 10px;border-radius:7px">📋 Copy</button>
+              <a href="/docs#/Sensorise" onclick="this.href = API_BASE + '/docs#/Sensorise'" target="_blank" rel="noopener noreferrer" class="b" style="font-size:11.5px;padding:4px 10px;border-radius:7px;text-decoration:none;display:inline-flex;align-items:center;gap:4px">📖 Open Docs</a>
             </div>
           </div>
 
@@ -2863,8 +2863,8 @@
               </div>
             </div>
             <div style="display:flex;align-items:center;gap:6px">
-              <button type="button" class="b" onclick="copySensoriseUrl(window.location.origin + '/api/sensorise/status', 'Status API URL')" style="font-size:11.5px;padding:4px 10px;border-radius:7px">📋 Copy</button>
-              <a href="/api/sensorise/status" target="_blank" rel="noopener noreferrer" class="b" style="font-size:11.5px;padding:4px 10px;border-radius:7px;text-decoration:none;display:inline-flex;align-items:center;gap:4px">🔍 View JSON</a>
+              <button type="button" class="b" onclick="copySensoriseUrl(API_BASE + '/api/sensorise/status', 'Status API URL')" style="font-size:11.5px;padding:4px 10px;border-radius:7px">📋 Copy</button>
+              <a href="/api/sensorise/status" onclick="this.href = API_BASE + '/api/sensorise/status'" target="_blank" rel="noopener noreferrer" class="b" style="font-size:11.5px;padding:4px 10px;border-radius:7px;text-decoration:none;display:inline-flex;align-items:center;gap:4px">🔍 View JSON</a>
             </div>
           </div>
 
@@ -2946,7 +2946,16 @@
     };
 
     // --- Foundation Configuration & Core Helpers ---
-    const API_BASE = window.location.origin;
+    const RENDER_BACKEND_URL = 'https://customer-vault-bstpl.onrender.com';
+    const API_BASE = (() => {
+      const override = window.API_BASE || window.API_URL || localStorage.getItem('API_BASE') || localStorage.getItem('API_URL');
+      if (override) return override.replace(/\/+$/, '');
+      const h = window.location.hostname;
+      if (window.location.protocol === 'file:' || h === 'localhost' || h === '127.0.0.1') {
+        return window.location.port === '8000' ? window.location.origin : 'http://127.0.0.1:8000';
+      }
+      return h.endsWith('onrender.com') ? window.location.origin : RENDER_BACKEND_URL;
+    })();
     let tok = localStorage.getItem('token') || '';
     let S = {}, CU = [], XC = [];
         let currentContainerId = '';
